@@ -8,7 +8,7 @@ const selfsigned = require('selfsigned');
 const { Server } = require('socket.io');
 const { makeBots, SONGS } = require('./bots');
 
-const PORT = 5090;        // http://localhost:5090  (this computer)
+const PORT = Number(process.env.PORT) || 5090; // http://localhost:5090  (this computer, or the host's port)
 const SECURE_PORT = 5443; // https://<lan-ip>:5443  (phones / other laptops on the same Wi-Fi)
 const TURN_MS = 60000;
 const LIVES = 3;
@@ -19,6 +19,10 @@ const REACTIONS = ['👏', '🔥', '🎶', '😂', '❤️', '🙌'];
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Voice relay (TURN) for phones on mobile data. Set ICE_SERVERS on the host as a JSON list, e.g. [{"urls":"turn:...","username":"...","credential":"..."}]
+const EXTRA_ICE = (() => { try { return JSON.parse(process.env.ICE_SERVERS || '[]'); } catch { return []; } })();
+app.get('/config', (req, res) => res.json({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, ...EXTRA_ICE] }));
 
 const httpServer = http.createServer(app);
 const pems = selfsigned.generate([{ name: 'commonName', value: 'antakshari.local' }], { days: 365, keySize: 2048 });
@@ -379,11 +383,16 @@ function respond(toId, fromId, accept) {
 const lanIps = Object.values(os.networkInterfaces()).flat()
   .filter(i => i && i.family === 'IPv4' && !i.internal).map(i => i.address);
 
-httpServer.listen(PORT, () => {
-  httpsServer.listen(SECURE_PORT, () => {
-    console.log(`\n🎤 Antakshari is live`);
-    console.log(`   This computer:   http://localhost:${PORT}`);
-    lanIps.forEach(ip => console.log(`   Same Wi-Fi:      https://${ip}:${SECURE_PORT}  (accept the certificate warning)`));
-    console.log('');
+// On a hosting service (Render etc.) the host gives the port and https, so only the plain server runs.
+if (process.env.PORT) {
+  httpServer.listen(PORT, () => console.log(`🎤 Antakshari is live on port ${PORT}`));
+} else {
+  httpServer.listen(PORT, () => {
+    httpsServer.listen(SECURE_PORT, () => {
+      console.log(`\n🎤 Antakshari is live`);
+      console.log(`   This computer:   http://localhost:${PORT}`);
+      lanIps.forEach(ip => console.log(`   Same Wi-Fi:      https://${ip}:${SECURE_PORT}  (accept the certificate warning)`));
+      console.log('');
+    });
   });
-});
+}

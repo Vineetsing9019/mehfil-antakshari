@@ -3,7 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Antakshari Mehfil</title>
+<title>Antakshari Mehfil: Play Online Hindi Antakshari with Friends</title>
+<meta name="description" content="Play Antakshari online with friends: invite singers, take turns singing Hindi film songs, and keep the mehfil going. Free, no download needed.">
+<meta name="theme-color" content="#12061f">
+<meta property="og:title" content="Antakshari Mehfil">
+<meta property="og:description" content="Sing, pass the letter, keep the mehfil going. Play Antakshari online with friends for free.">
+<meta property="og:type" content="website">
+<meta name="robots" content="index, follow">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🎤%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Yatra+One&display=swap" rel="stylesheet">
 <style>
@@ -813,6 +820,8 @@ requestAnimationFrame(tick);
 
 /* ---------- voices: WebRTC mesh, mic gated by turn ---------- */
 let localStream = null, micPromise = null, micDenied = false;
+let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+fetch('/config').then(r => r.json()).then(c => { iceServers = c.iceServers; }).catch(() => {});
 const peers = new Map(); // id -> { pc, audio, stream, queue }
 function micReady(){
   if (!micPromise) micPromise = navigator.mediaDevices?.getUserMedia
@@ -839,7 +848,7 @@ function updateMicUI(){
   label.textContent = micDenied ? 'Mic blocked by the browser' : live ? 'Your mic is live' : room?.state === 'playing' ? 'Your mic is muted until your turn' : 'Your mic is off';
 }
 function makePeer(id, initiator){
-  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  const pc = new RTCPeerConnection({ iceServers });
   if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
   else pc.addTransceiver('audio', { direction: 'recvonly' });
   const audio = document.createElement('audio'); audio.autoplay = true; audio.playsInline = true;
