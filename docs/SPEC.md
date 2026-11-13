@@ -69,7 +69,7 @@ The app must be built so it can grow to about 100,000 registered users and sever
 online at once.
 - Stateless HTTP pages; static assets behind a CDN.
 - Real-time over Socket.IO. For more than one server process, use the Socket.IO Redis adapter.
-- Storage: move `data.json` to a managed database (Postgres or Supabase) before large
+- Storage: move `data.json` to a managed database (for example Postgres) before large
   growth. Photos go to object storage, not the database.
 - Voice: WebRTC mesh for small tables is fine (up to 8). A TURN relay is required for
   mobile data; keep the TURN credentials on the server.
