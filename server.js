@@ -117,7 +117,7 @@ function applyProfile(person, p) {
   person.handle = uniqueHandle(p.handle || person.name, person.token);
   person.city = clean(p.city, 30);
   person.bio = clean(p.bio, 120);
-  person.defaultSeed = DEFAULT_SEEDS.includes(p.defaultSeed) ? p.defaultSeed : person.defaultSeed || DEFAULT_SEEDS[0];
+  person.defaultSeed = person.name || 'Singer'; // the classic default avatar is the person's initials
   if (p.photo !== undefined) person.photo = parseImage(p.photo);
   if (Array.isArray(p.posts)) person.posts = p.posts.slice(0, MAX_POSTS).map(parseImage).filter(Boolean);
   person.ver = (person.ver || 0) + 1;

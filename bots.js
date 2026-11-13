@@ -50,7 +50,7 @@ function makeBots() {
     id: `bot-${p.handle}`,
     bot: true,
     avatar: '🎤',
-    photo: `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(p.handle)}&backgroundColor=ffd5dc,ffdfbf,c0aede,d1d4f9,b6e3f4`,
+    photo: `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(p.name)}&backgroundColor=b6e3f4,c0aede,ffd5dc,ffdfbf,d1d4f9&fontWeight=600`,
     followers: fmt(rand(800, 25000)),
     sung: rand(40, 900),
     wins: rand(3, 120),

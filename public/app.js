@@ -7,7 +7,8 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const DEFAULT_SEEDS = ['Mehfil', 'Sargam', 'Taal', 'Raag', 'Dhun', 'Geet', 'Sur', 'Lehar', 'Jhankaar', 'Tarana', 'Ghazal', 'Qawwali'];
-const dice = seed => `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundColor=ffd5dc,ffdfbf,c0aede,d1d4f9,b6e3f4`;
+// Classic default avatar: the person's initials on a soft background (no cartoon faces).
+const dice = seed => `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(seed)}&backgroundColor=b6e3f4,c0aede,ffd5dc,ffdfbf,d1d4f9&fontWeight=600`;
 const THEMES = [['classic', 'Classic'], ['rapid', 'Rapid Fire'], ['dhun', 'Dhun round'], ['decade', 'Decade 90s'], ['actor', 'Actor round']];
 const TURNS = [20, 30, 60, 90];
 const LANGS = [['en', 'English'], ['hi', 'हिन्दी'], ['mr', 'मराठी']];
@@ -139,7 +140,7 @@ function renderMe() {
 }
 
 function av(p, extra = '') {
-  const seed = p?.defaultSeed || 'Mehfil';
+  const seed = p?.name || p?.defaultSeed || 'Mehfil';
   const src = p?.photo || dice(seed);
   return `<span class="av ${extra}"><img src="${esc(src)}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${dice(seed)}'"></span>`;
 }
@@ -288,7 +289,7 @@ function renderProfileForm(sel, opts) {
   const draft = opts.draft || { name: '', handle: '', city: '', bio: '', defaultSeed: DEFAULT_SEEDS[Math.floor(Math.random() * DEFAULT_SEEDS.length)], photo: null, photoChanged: false, posts: [], postsChanged: false };
   S.form = { mode, draft, sel, handleTouched: !!draft.handle, edit: mode === 'edit' };
   const box = $(sel);
-  const preview = draft.photo || (mode === 'edit' && !draft.photoChanged ? S.me?.photo : null) || dice(draft.defaultSeed);
+  const preview = draft.photo || (mode === 'edit' && !draft.photoChanged ? S.me?.photo : null) || dice(draft.name || 'Mehfil');
   box.innerHTML = `
     <div class="photopick">
       <span class="ringed">${`<span class="av"><img src="${esc(preview)}" alt=""></span>`}</span>
@@ -298,8 +299,6 @@ function renderProfileForm(sel, opts) {
         ${draft.photo ? '<button class="btn btn-text btn-sm" data-act="no-photo">Use an avatar</button>' : ''}
       </div>
     </div>
-    ${draft.photo ? '' : `<span class="lbl">No photo? Pick one of ours</span>
-      <div class="defaults">${DEFAULT_SEEDS.map(s => `<button type="button" data-act="seed" data-arg="${s}" class="${s === draft.defaultSeed ? 'on' : ''}" aria-label="Avatar ${s}"><img src="${dice(s)}" alt=""></button>`).join('')}</div>`}
     <label class="field"><span>Name *</span><input data-f="name" maxlength="20" placeholder="e.g. Vineet" autocomplete="off" value="${esc(draft.name)}"></label>
     <label class="field"><span>Username</span><input data-f="handle" maxlength="24" placeholder="vineet.sings" autocomplete="off" value="${esc(draft.handle)}"></label>
     <label class="field"><span>City</span><input data-f="city" maxlength="30" placeholder="e.g. Pune" autocomplete="off" value="${esc(draft.city)}"></label>
