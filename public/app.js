@@ -299,10 +299,10 @@ function renderProfileForm(sel, opts) {
         ${draft.photo ? '<button class="btn btn-text btn-sm" data-act="no-photo">Use an avatar</button>' : ''}
       </div>
     </div>
-    <label class="field"><span>Name *</span><input data-f="name" maxlength="20" placeholder="e.g. Vineet" autocomplete="off" value="${esc(draft.name)}"></label>
-    <label class="field"><span>Username</span><input data-f="handle" maxlength="24" placeholder="vineet.sings" autocomplete="off" value="${esc(draft.handle)}"></label>
-    <label class="field"><span>City</span><input data-f="city" maxlength="30" placeholder="e.g. Pune" autocomplete="off" value="${esc(draft.city)}"></label>
-    <label class="field"><span>Bio</span><textarea data-f="bio" maxlength="120" rows="2" placeholder="Kishore Kumar fan 🎶">${esc(draft.bio)}</textarea></label>
+    <label class="field"><span>Name *</span><input data-f="name" maxlength="20" placeholder="Your name" autocomplete="off" value="${esc(draft.name)}"></label>
+    <label class="field"><span>Username</span><input data-f="handle" maxlength="24" placeholder="Filled in from your name" autocomplete="off" value="${esc(draft.handle)}"></label>
+    <label class="field"><span>City</span><input data-f="city" maxlength="30" placeholder="Your city" autocomplete="off" value="${esc(draft.city)}"></label>
+    <label class="field"><span>Bio</span><textarea data-f="bio" maxlength="120" rows="2" placeholder="A line about you (optional)">${esc(draft.bio)}</textarea></label>
     <span class="lbl">Your photos (optional, up to ${MAX_POSTS})</span>
     <div class="pgrid">${draft.posts.map((p, i) => `<div class="tile"><img src="${esc(p)}" alt=""><button type="button" class="rm" data-act="rm-post" data-arg="${i}" aria-label="Remove photo">✕</button></div>`).join('')}
       ${draft.posts.length < MAX_POSTS ? '<label class="tile add">＋ Add<input type="file" accept="image/*" multiple hidden data-pick="post"></label>' : ''}</div>

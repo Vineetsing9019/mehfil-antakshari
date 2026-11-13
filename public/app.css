@@ -62,6 +62,7 @@ a{color:var(--gold)}
 .field>span{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .field input,.field textarea,input.search,.code-row input,.chat-row input,.queue-row input,.song-in{width:100%;padding:12px 15px;border-radius:14px;border:1px solid var(--line);background:rgba(0,0,0,.25);outline:none;min-height:44px}
 .field textarea{resize:none}
+.field input::placeholder,.field textarea::placeholder{color:rgba(195,178,214,.45);font-style:italic}
 .field input:focus,.field textarea:focus{border-color:var(--gold)}
 .hint{font-size:13px;color:var(--muted);min-height:18px;margin:-6px 0 10px}
 .hint.warn{color:var(--pink)}
