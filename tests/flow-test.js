@@ -1,0 +1,222 @@
+// Acceptance tests: starts the server on a spare port with temporary data files, then plays the flows.
+// Run with: npm test
+const { spawn } = require('child_process');
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
+const { io } = require('socket.io-client');
+
+const PORT = 5097;
+const URL = `http://localhost:${PORT}`;
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mehfil-'));
+const DATA = path.join(tmp, 'data.json');
+const REPORTS = path.join(tmp, 'reports.json');
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const rnd = () => Math.random().toString(36).slice(2, 12).padEnd(10, 'x');
+
+let passed = 0, failed = 0;
+function check(name, ok, detail = '') {
+  if (ok) { passed++; console.log('  ✓', name); }
+  else { failed++; console.log('  ✗', name, detail ? `(${detail})` : ''); }
+}
+
+function person(name, opts = {}) {
+  const token = opts.token || rnd();
+  const s = io(URL, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const st = { s, token, name, view: null, lobby: { people: [], tables: [] }, toasts: [], hints: null, chat: [], invites: [], me: null };
+  s.on('table', v => { st.view = v; });
+  s.on('lobby', l => { st.lobby = l; });
+  s.on('toast', m => st.toasts.push(m));
+  s.on('hints', h => { st.hints = h; });
+  s.on('invite', i => st.invites.push(i));
+  s.on('chat', ({ msg }) => st.chat.push(msg));
+  s.on('me', m => { st.me = m; });
+  s.on('connect', () => s.emit('hello', { token }));
+  return new Promise(res => {
+    s.once('me', () => {
+      if (opts.noProfile) return res(st);
+      s.emit('profile:update', { name, handle: opts.handle || name.toLowerCase(), city: 'Pune', bio: 'test' });
+      s.once('profile:saved', () => res(st));
+    });
+  });
+}
+const lastToast = st => st.toasts[st.toasts.length - 1];
+const msgs = { seen: 0 };
+
+async function main() {
+  console.log(`Starting server on ${URL} (temporary data in ${tmp})`);
+  const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
+    env: { ...process.env, PORT: String(PORT), DATA_FILE: DATA, REPORTS_FILE: REPORTS },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let log = '';
+  server.stdout.on('data', d => { log += d; });
+  server.stderr.on('data', d => { log += d; });
+  await wait(1200);
+
+  try {
+    console.log('\n1. Profiles, table codes and joining by code');
+    const A = await person('Asha', { handle: 'asha' });
+    const B = await person('Bobby', { handle: 'bobby' });
+    check('profile saved and shown in the lobby', B.lobby.people.some(p => p.name === 'Asha'), JSON.stringify(B.lobby.people.map(p => p.name)));
+    A.s.emit('table:create', { type: 'game' });
+    await wait(300);
+    check('host gets a table with a 6-character code', A.view && A.view.code.length === 6, JSON.stringify(A.view?.code));
+    const code = A.view.code;
+    B.s.emit('table:join', { code });
+    await wait(300);
+    check('second person joins by code', B.view && B.view.members.length === 2);
+    check('joiner sees the host as host', B.view?.members.find(m => m.token === A.token)?.isHost === true);
+
+    console.log('\n2. Game: voting, rejection, acceptance, letters');
+    A.s.emit('table:settings', { settings: { lives: 3, turnSec: 30 } });
+    await wait(150);
+    check('host settings applied', A.view.settings.turnSec === 30 && A.view.settings.lives === 3);
+    A.s.emit('table:start');
+    await wait(300);
+    check('game starts in playing state', A.view.state === 'playing' && !!A.view.letter);
+    const singer = A.view.turn === A.token ? A : B, other = singer === A ? B : A;
+    const letter = singer.view.letter;
+    singer.s.emit('turn:done', { song: `${letter}ak test song ${rnd()}`, lastWord: 'pyaar' });
+    await wait(200);
+    check('submitted song goes to a vote first', singer.view.verifying && singer.view.verifying.canVote === false);
+    other.s.emit('vote', { vote: 'down' });
+    await wait(250);
+    check('rejected when thumbs-down outnumber thumbs-up (life lost)', (singer.view.members.find(m => m.token === singer.token).lives) === 2, JSON.stringify(singer.view.members.map(m => m.lives)));
+    check('turn passes after a rejection', singer.view.turn !== singer.token);
+    check('letter stays the same after a rejected song', singer.view.letter === letter);
+
+    const s2 = other, t2 = singer; // now the other singer sings
+    const l2 = s2.view.letter;
+    s2.s.emit('turn:done', { song: `${l2}ak accepted ${rnd()}`, lastWord: 'hai' });
+    await wait(200);
+    t2.s.emit('vote', { vote: 'up' });
+    await wait(250);
+    check('accepted when votes are not thumbs-down majority', s2.view.trail.some(x => x.song && x.song.startsWith(l2)));
+    check('"hai" gives the next letter H (sound rule)', s2.view.letter === 'H', s2.view.letter);
+    check('accepted song earns points for the singer', s2.view.members.find(m => m.token === s2.token).score >= 10);
+    const board = await (await fetch(`${URL}/leaderboard`)).json();
+    check('leaderboard shows the singer this week', board.rows.some(r => r.token === s2.token));
+
+    console.log('\n3. Hint costs points and only the singer sees it');
+    // The singer whose turn it is now has 0 points: a hint is refused.
+    const poor = [A, B].find(p => p.view.turn === p.token);
+    poor.s.emit('turn:hint');
+    await wait(200);
+    check('a hint is refused when the singer cannot pay 5 points', lastToast(poor)?.includes('costs 5'), JSON.stringify(poor.toasts));
+    // Let the other singer sing (accepted) so the first singer's turn comes back with points.
+    const rich = poor === A ? B : A;
+    const l3 = poor.view.letter;
+    poor.s.emit('turn:done', { song: `${l3}ak hint setup ${rnd()}`, lastWord: 'man' });
+    await wait(200);
+    rich.s.emit('vote', { vote: 'up' });
+    await wait(250);
+    check('turn is back with the singer who has points', rich.view.turn === rich.token);
+    const before = rich.view.members.find(m => m.token === rich.token).score;
+    rich.s.emit('turn:hint');
+    await wait(250);
+    const after = rich.view.members.find(m => m.token === rich.token).score;
+    check('hint shows 3 song titles only to the singer', !!rich.hints && rich.hints.titles.length === 3, JSON.stringify(rich.hints));
+    check('hint takes 5 points from the singer', before - after === 5, `${before} -> ${after}`);
+    check('other players do not get hints', !poor.hints);
+
+    console.log('\n4. Listener, block and report');
+    const C = await person('Chandni', { handle: 'chandni' });
+    C.s.emit('table:join', { code });
+    await wait(250);
+    const c = C.view?.members.find(m => m.token === C.token);
+    check('joining during a game makes a listener', c && c.role === 'listener');
+    A.s.emit('block', { token: B.token });
+    await wait(200);
+    B.s.emit('invite', { token: A.token });
+    await wait(200);
+    check('blocked person cannot send a request', lastToast(B)?.includes('not available') || B.toasts.length > 0, JSON.stringify(B.toasts));
+    A.s.emit('block', { token: B.token }); // unblock
+    await wait(150);
+    B.s.emit('report', { token: A.token, reason: 'test' });
+    await wait(300);
+    check('report is saved for the operator', fs.existsSync(REPORTS) && fs.readFileSync(REPORTS, 'utf8').includes('"reason": "test"'));
+
+    console.log('\n5. Jam table: up to 8 people, 9th refused');
+    const jamHost = await person('JamHost', { handle: 'jamhost' });
+    jamHost.s.emit('table:create', { type: 'jam' });
+    await wait(250);
+    const jamCode = jamHost.view.code;
+    const more = [];
+    for (let i = 0; i < 8; i++) more.push(await person('Jammer' + i, { handle: 'jammer' + i }));
+    more.forEach(p => p.s.emit('table:join', { code: jamCode }));
+    await wait(400);
+    check('jam holds 8 people', jamHost.view.members.length === 8, String(jamHost.view.members.length));
+    const extra = await person('Late', { handle: 'late' });
+    extra.s.emit('table:join', { code: jamCode });
+    await wait(250);
+    check('the 9th person is refused', lastToast(extra)?.includes('full'), JSON.stringify(extra.toasts));
+    jamHost.s.emit('stage:take');
+    await wait(200);
+    check('stage is taken by one lead singer', jamHost.view.stage === jamHost.token);
+    more[0].s.emit('queue:add', { title: 'Kesariya' });
+    await wait(200);
+    check('anyone can add to the song queue', jamHost.view.queue.length === 1);
+    jamHost.s.emit('queue:next');
+    await wait(200);
+    check('next song starts from the queue', jamHost.view.nowPlaying?.title === 'Kesariya');
+
+    console.log('\n6. Reconnect keeps the seat; follow alert; persistence');
+    const D = await person('Dev', { handle: 'dev' });
+    const devTok = D.token;
+    D.s.emit('table:create', { type: 'game' });
+    await wait(200);
+    const devCode = D.view.code;
+    D.s.disconnect();
+    await wait(300);
+    const D2 = await person('Dev', { handle: 'dev', token: devTok, noProfile: true });
+    await wait(300);
+    check('reconnecting with the same token restores the table', D2.view?.code === devCode && D2.view.members.find(m => m.token === devTok)?.online === true);
+    // follow alert: E follows Dev, Dev goes offline, comes back
+    const E = await person('Esha', { handle: 'esha' });
+    E.s.emit('follow', { token: devTok });
+    await wait(200);
+    D2.s.disconnect();
+    await wait(200);
+    const D3 = await person('Dev', { handle: 'dev', token: devTok, noProfile: true });
+    await wait(300);
+    check('follower gets a "now online" alert', E.toasts.some(m => m.includes('is online now')), JSON.stringify(E.toasts));
+    await wait(700);
+    const saved = JSON.parse(fs.readFileSync(DATA, 'utf8'));
+    check('profiles are saved to data.json', saved.people.some(p => p.name === 'Asha'));
+
+    console.log('\n7. Team mode, chat, reactions, removing a player');
+    const F = await person('Farah', { handle: 'farah' });
+    const G = await person('Gopal', { handle: 'gopal' });
+    F.s.emit('table:create', { type: 'game', settings: { teams: true } });
+    await wait(200);
+    const teamCode = F.view.code;
+    G.s.emit('table:join', { code: teamCode });
+    await wait(250);
+    F.s.emit('table:start');
+    await wait(300);
+    const teams = F.view.members.map(m => m.team);
+    check('team mode puts singers in Team A and Team B', teams.includes('A') && teams.includes('B'), JSON.stringify(teams));
+    F.s.emit('chat', { text: 'Wah wah!' });
+    await wait(200);
+    check('chat message reaches the other singer', G.chat.some(m => m.text === 'Wah wah!'));
+    G.s.emit('react', { emoji: '👏' });
+    await wait(200);
+    check('reaction is accepted from a table member', G.toasts.length >= 0 && G.view.members.length === 2);
+    F.s.emit('table:kick', { token: G.token });
+    await wait(300);
+    check('host can remove a singer', F.view.members.length === 1);
+    check('removed singer is sent out of the table', G.view === null);
+
+    for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G]) p.s.close();
+  } catch (err) {
+    failed++;
+    console.log('  ✗ test crashed:', err.message);
+  } finally {
+    server.kill();
+  }
+  if (failed) console.log('\nServer log:\n' + log.slice(-1500));
+  console.log(`\n${passed} passed, ${failed} failed`);
+  process.exit(failed ? 1 : 0);
+}
+main();

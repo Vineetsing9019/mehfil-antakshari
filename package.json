@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node smoke-test.js",
-    "start": "node server.js"
+    "test": "node tests/flow-test.js",
+    "start": "node server.js",
+    "make-icons": "node scripts/make-icons.js"
   },
   "keywords": [],
   "author": "",
