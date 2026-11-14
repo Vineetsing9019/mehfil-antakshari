@@ -87,7 +87,7 @@ function speakSong(song, botToken) {
   // makes some voices buzz or click between lines.
   const id = ++S.singId;
   const pitch = 0.95 + (h % 3) * 0.05;   // 0.95 to 1.05: each bot a little different, no distortion
-  const lines = [...song.lines];
+  const lines = [...(song.sing || song.lines)];
   const sayNext = () => {
     if (id !== S.singId || !lines.length) return;
     const u = new SpeechSynthesisUtterance(lines.shift());

@@ -8,7 +8,7 @@ const os = require('os');
 const selfsigned = require('selfsigned');
 const { Server } = require('socket.io');
 const { makeBots, SONGS } = require('./bots');
-const { librarySongsFor } = require('./songlib');
+const { librarySongsFor, songPerformance } = require('./songlib');
 
 const PORT = Number(process.env.PORT) || 5090; // localhost:5090, or the host's port
 const SECURE_PORT = 5443;                      // https for phones on this Wi-Fi (local only)
@@ -388,8 +388,10 @@ function botTurn(t, id) {
     song = options.length && Math.random() < 0.9 ? options[Math.floor(Math.random() * options.length)] : null;
   }
   t.botSong = song;
-  t.botSing = sing ? { id: sing.id, title: sing.title, lang: sing.lang, lines: sing.lines } : null;
-  const ms = sing ? 2000 + sing.lines.length * 2600 : song ? 5000 + Math.random() * 6000 : 6000 + Math.random() * 4000;
+  // A library song is sung for about 35 seconds (or less on quick turns), repeating its lines to fill the time.
+  const perf = sing ? songPerformance(sing, Math.max(8, Math.min(35, turnMs(t) / 1000 - 10))) : null;
+  t.botSing = sing ? { id: sing.id, title: sing.title, lang: sing.lang, lines: sing.lines, sing: perf.lines } : null;
+  const ms = sing ? perf.seconds * 1000 : song ? 5000 + Math.random() * 6000 : 6000 + Math.random() * 4000;
   t.botTimer = setTimeout(() => {
     if (t.state !== 'playing' || currentToken(t) !== id || t.verifying) return;
     if (song) {

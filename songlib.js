@@ -151,4 +151,21 @@ function librarySongsFor(letter, usedTitles = []) {
   return LIBRARY.filter(s => s.title[0].toUpperCase() === letter && !used.has(s.title.toLowerCase()));
 }
 
-module.exports = { LIBRARY, librarySongsFor };
+// How long a song takes to speak, roughly: about 0.07 s per character plus a short pause per line.
+const SECS_PER_CHAR = 0.07, GAP_S = 0.35;
+
+// The lines a bot speaks to fill about targetSec seconds: the song repeats until it is long enough.
+function songPerformance(song, targetSec) {
+  const lines = [];
+  let total = 0;
+  while (total < targetSec) {
+    for (const line of song.lines) {
+      lines.push(line);
+      total += line.length * SECS_PER_CHAR + GAP_S;
+      if (total >= targetSec) break;
+    }
+  }
+  return { lines, seconds: total };
+}
+
+module.exports = { LIBRARY, librarySongsFor, songPerformance };
