@@ -21,7 +21,7 @@ const store = {
 const S = {
   token: null, me: null, named: false, ice: [{ urls: 'stun:stun.l.google.com:19302' }],
   lobby: { people: [], tables: [] }, board: [], sent: new Set(), invites: [],
-  table: null, lastTurnKey: '', offset: 0, hints: null, draft: {}, overShown: '',
+  table: null, singId: 0, utter: null, lastTurnKey: '', offset: 0, hints: null, draft: {}, overShown: '',
   peers: new Map(), local: null, micPromise: null, micDenied: false, micOn: false,
   actx: null, amb: null, analysers: new Map(), form: null, modalDismiss: true,
   pendingCode: null, pendingHandle: null, sheet: null, unread: 0,
@@ -83,13 +83,24 @@ function speakSong(song, botToken) {
     if (pool.length) break;
   }
   const voice = pool.length ? pool[h % pool.length] : null;
-  song.lines.forEach(line => {
-    const u = new SpeechSynthesisUtterance(line);
+  // Speak one line at a time, starting the next only when the last one ends. Queuing every line at once
+  // makes some voices buzz or click between lines.
+  const id = ++S.singId;
+  const pitch = 0.95 + (h % 3) * 0.05;   // 0.95 to 1.05: each bot a little different, no distortion
+  const lines = [...song.lines];
+  const sayNext = () => {
+    if (id !== S.singId || !lines.length) return;
+    const u = new SpeechSynthesisUtterance(lines.shift());
     if (voice) { u.voice = voice; u.lang = voice.lang; }
-    u.pitch = 0.85 + (h % 5) * 0.1;   // 0.85 to 1.25, so bots sound different
+    u.pitch = pitch;
     u.rate = 0.9;
+    u.volume = 1;
+    S.utter = u;   // keep a reference so the browser does not drop it mid-line
+    u.onend = () => setTimeout(sayNext, 350);
+    u.onerror = () => setTimeout(sayNext, 350);
     synth.speak(u);
-  });
+  };
+  sayNext();
 }
 // Tanpura drone and a soft dholak beat for between turns.
 function startAmbience() {
@@ -431,6 +442,7 @@ function renderTable() {
     S.lastTurnKey = key;
     if (v.turn === S.token) { chime([523, 659, 784]); navigator.vibrate?.(200); }
     const botNow = v.members.find(m => m.token === v.turn)?.bot;
+    S.singId++;   // stop any line that is still waiting to be spoken
     window.speechSynthesis?.cancel();
     if (botNow && v.botSing) speakSong(v.botSing, v.turn);
     else if (v.botSong && botNow) hum(v.botSong);
