@@ -470,6 +470,7 @@ function renderStage() {
       <div class="secs" id="secs"></div>
       <div class="eq" id="eq">${'<i></i>'.repeat(16)}</div>
       <div class="secs">${v.turn === S.token ? 'You are singing' : esc(turnName(v)) + ' is singing'}${v.botSong ? ` · 🎵 “${esc(v.botSong)}”` : ''}</div>
+      ${v.botSing ? `<div class="lyric">${v.botSing.lines.map(l => esc(l)).join('<br>')}</div>` : ''}
       <div class="clapbar"><i style="width:${Math.min(100, v.claps * 12)}%"></i></div></div>`;
   } else {
     const winner = v.winnerTeam ? (v.winnerTeam === 'tie' ? 'A tie!' : `Team ${v.winnerTeam} wins`) : `${v.members.find(m => m.token === v.winnerToken)?.name || 'Someone'} wins`;

@@ -342,3 +342,6 @@ a{color:var(--gold)}
 @media (prefers-reduced-motion:reduce){.yourturn,.seat .micb,.dk,.sheet-panel,.sheet-scrim{animation:none!important}}
 
 #sheet-root:empty{display:none}
+
+/* Bot lyrics shown while a bot sings */
+.lyric{font-size:15px;line-height:1.5;text-align:center;margin:8px 12px;opacity:.9}
