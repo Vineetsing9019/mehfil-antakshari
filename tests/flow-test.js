@@ -208,6 +208,14 @@ async function main() {
     check('host can remove a singer', F.view.members.length === 1);
     check('removed singer is sent out of the table', G.view === null);
 
+    console.log('\n8. Voice mode (take turns or everyone talks)');
+    F.s.emit('table:settings', { settings: { voice: 'call' } });
+    await wait(200);
+    check('host can switch the game to "Everyone talks"', F.view.settings.voice === 'call', JSON.stringify(F.view.settings));
+    F.s.emit('table:settings', { settings: { voice: 'turns' } });
+    await wait(200);
+    check('host can switch back to "Take turns"', F.view.settings.voice === 'turns');
+
     for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G]) p.s.close();
   } catch (err) {
     failed++;

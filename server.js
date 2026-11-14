@@ -206,7 +206,7 @@ function createTable(type, hostToken, settings = {}) {
   const t = {
     code: newCode(), type, hostToken, members: new Map(), order: [],
     state: type === 'jam' ? 'jam' : 'lobby',
-    settings: { theme: 'classic', turnSec: 60, lives: 3, teams: false, lang: 'en', ...pick(settings) },
+    settings: { theme: 'classic', turnSec: 60, lives: 3, teams: false, lang: 'en', voice: 'turns', ...pick(settings) },
     letter: null, turnIdx: 0, turnEndsAt: null, timer: null, botTimer: null, verifyTimer: null, verifying: null,
     trail: [], chat: [], claps: 0, clapTotals: new Map(), winnerToken: null, winnerTeam: null, crowdFav: null,
     queue: [], nowPlaying: null, stage: null, botSong: null, createdAt: Date.now(),
@@ -220,6 +220,7 @@ function pick(s) {
   if (TURN_OPTIONS.includes(Number(s.turnSec))) out.turnSec = Number(s.turnSec);
   if (Number.isInteger(Number(s.lives)) && s.lives >= 1 && s.lives <= 5) out.lives = Number(s.lives);
   if (typeof s.teams === 'boolean') out.teams = s.teams;
+  if (['turns', 'call'].includes(s.voice)) out.voice = s.voice;
   if (LANGS.includes(s.lang)) out.lang = s.lang;
   return out;
 }

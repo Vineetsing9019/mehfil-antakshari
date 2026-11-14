@@ -173,6 +173,10 @@ socket.on('table', v => {
   if (!v) { leaveLocal(); return; }
   S.table = v;
   S.offset = v.now - Date.now();
+  // Call-style tables (Sing together, or "Everyone talks") start with the mic on.
+  const callMode = v.type === 'jam' || v.settings.voice === 'call';
+  if (S.lastCode !== v.code || S.lastCallMode !== callMode) S.micOn = callMode;
+  S.lastCode = v.code; S.lastCallMode = callMode;
   show('table');
   renderTable();
   ensureMic().then(syncPeers);
@@ -213,6 +217,7 @@ function showLobby() {
 }
 function leaveLocal() {
   S.table = null;
+  S.lastCode = null;
   closeAllPeers();
   stopAmbience();
   if (S.local) { S.local.getTracks().forEach(t => t.stop()); S.local = null; S.micPromise = null; }
@@ -383,6 +388,10 @@ function renderTable() {
   $('#t-type').textContent = v.type === 'jam' ? '🎶 Jam' : '🎤 Game';
   $('#t-code').textContent = v.code;
   $('#music-btn').textContent = S.amb ? '🔇 Music off' : '🎵 Music';
+  const st = $('#t-start');
+  st.hidden = !(v.isHost && v.type === 'game' && v.state !== 'playing');
+  st.disabled = v.members.length < 2;
+  st.textContent = v.state === 'over' ? 'Play again' : 'Start game';
   renderStage();
   renderAction();
   renderMembers();
@@ -496,8 +505,10 @@ function renderAction() {
   // keep what the singer has typed across re-renders
   const keep = { song: $('#in-song')?.value ?? S.draft.song ?? '', last: $('#in-last')?.value ?? S.draft.last ?? '' };
   box.classList.remove('yourturn');
-  const micLive = v.type === 'jam' ? S.micOn : (v.turn === S.token && !v.verifying && v.state === 'playing');
-  const micLine = `<div class="micstate ${micLive ? 'live' : ''}"><span class="led"></span>${S.micDenied ? 'Mic blocked by the browser' : micLive ? 'Your mic is live' : v.type === 'jam' ? 'Your mic is off' : 'Your mic is muted until your turn'}</div>`;
+  const callMode = v.type === 'jam' || v.settings.voice === 'call';
+  const micLive = callMode ? S.micOn : (v.turn === S.token && !v.verifying && v.state === 'playing');
+  const micLine = `<div class="micstate ${micLive ? 'live' : ''}"><span class="led"></span>${S.micDenied ? 'Mic blocked by the browser' : micLive ? 'Your mic is live' : callMode ? 'Your mic is off' : 'Your mic is muted until your turn'}</div>
+    ${callMode ? `<div class="row" style="margin-top:10px"><button class="btn btn-line btn-sm" data-act="mic">${S.micOn ? '🔇 Mute' : '🎙 Unmute'}</button></div>` : ''}`;
   if (v.type === 'jam') {
     box.innerHTML = `<h3>Jam table</h3>
       <p class="lead">Open mic for everyone. Take the stage to lead a song, and add songs to the queue.</p>
@@ -521,7 +532,8 @@ function renderAction() {
           <button class="btn btn-primary" data-act="song-done">Done singing ✓</button>
           <button class="btn btn-line" data-act="hint">💡 Hint (−5)</button>
           <button class="btn btn-text" data-act="pass">Pass (−1 ❤)</button>
-        </div>${micLine}`;
+        </div>
+        <div class="row" style="margin-top:8px"><button class="btn btn-text btn-sm" data-act="leave">Leave table (I don't want to sing)</button></div>${micLine}`;
       const check = () => {
         const s = ($('#in-song')?.value || '').trim(), f = (s.match(/[a-z]/i) || [''])[0].toUpperCase();
         const l = ($('#in-last')?.value.match(/[a-z](?=[^a-z]*$)/i) || [''])[0];
@@ -615,9 +627,9 @@ function renderSide() {
       <span class="lbl">Time per turn</span><div class="chips">${TURNS.map(t => `<button class="chip ${s.turnSec === t ? 'on' : ''}" data-act="set" data-arg="turnSec=${t}">${t}s</button>`).join('')}</div>
       <span class="lbl">Lives</span><div class="chips">${[1, 2, 3, 4, 5].map(n => `<button class="chip ${s.lives === n ? 'on' : ''}" data-act="set" data-arg="lives=${n}">${n} ❤</button>`).join('')}</div>
       <span class="lbl">Letters</span><div class="chips">${LANGS.map(([k, l]) => `<button class="chip ${s.lang === k ? 'on' : ''}" data-act="set" data-arg="lang=${k}">${l}</button>`).join('')}</div>
+      <span class="lbl">Voice</span><div class="chips"><button class="chip ${s.voice !== 'call' ? 'on' : ''}" data-act="set" data-arg="voice=turns">Take turns</button><button class="chip ${s.voice === 'call' ? 'on' : ''}" data-act="set" data-arg="voice=call">Everyone talks</button></div>
       <label class="switch">Team A vs Team B <input type="checkbox" ${s.teams ? 'checked' : ''} data-act="toggle-teams" aria-label="Teams"></label>
-      <button class="btn btn-primary btn-block" data-act="start" ${v.members.length < 2 ? 'disabled' : ''}>${v.state === 'over' ? 'Play again' : 'Start the game'}</button>
-      ${v.members.length < 2 ? '<p class="muted" style="margin-top:8px;text-align:center">Invite at least one more singer to start.</p>' : ''}`;
+      <p class="muted" style="text-align:center">${v.members.length < 2 ? 'Invite at least one more singer, then press Start game at the top.' : 'Press Start game at the top when everyone is in.'}</p>`;
     return;
   }
   box.innerHTML = `<div class="sechead"><h2 class="card-title">🎼 Song trail</h2></div>
@@ -663,13 +675,17 @@ function ensureMic() {
 }
 function applyMic() {
   const v = S.table, track = S.local?.getAudioTracks()[0];
-  if (track && v) track.enabled = v.type === 'jam' ? S.micOn : (v.state === 'playing' && v.turn === S.token && !v.verifying);
+  if (track && v) {
+    const callMode = v.type === 'jam' || v.settings.voice === 'call';
+    track.enabled = callMode ? S.micOn : (v.state === 'playing' && v.turn === S.token && !v.verifying);
+  }
   if (S.micTesting && track) track.enabled = true;
 }
 function applyMuting() {
   const v = S.table;
   S.peers.forEach((p, tok) => {
-    p.audio.muted = !!v && v.type === 'game' && v.state === 'playing' && v.turn !== tok;
+    // Take-turns games: only the singer is heard. Call-style tables: everyone is heard.
+    p.audio.muted = !!v && v.type === 'game' && v.state === 'playing' && v.settings.voice !== 'call' && v.turn !== tok;
   });
 }
 function syncPeers() {
@@ -753,7 +769,7 @@ const ACT = {
   start: () => socket.emit('table:start'),
   set: arg => {
     const [k, raw] = arg.split('=');
-    const val = k === 'theme' || k === 'lang' ? raw : Number(raw);
+    const val = ['theme', 'lang', 'voice'].includes(k) ? raw : Number(raw);
     socket.emit('table:settings', { settings: { [k]: val } });
   },
   'toggle-teams': () => socket.emit('table:settings', { settings: { teams: !S.table.settings.teams } }),
