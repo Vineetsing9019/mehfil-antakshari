@@ -376,10 +376,10 @@ function startTurn(t) {
 // A bot chooses a real song for the letter (sometimes it gets stuck), then sings for a few seconds.
 function botTurn(t, id) {
   const used = [...t.trail.filter(x => x.song).map(x => x.song)];
-  // Most of the time the bot sings one of the library songs (its lyrics are spoken aloud by the browser).
+  // A bot sings a library song (lyrics shown and spoken) whenever one is free for this letter.
   const libOptions = librarySongsFor(t.letter, used);
   let song = null, sing = null;
-  if (libOptions.length && Math.random() < 0.6) {
+  if (libOptions.length) {
     sing = libOptions[Math.floor(Math.random() * libOptions.length)];
     song = sing.title;
   } else {
