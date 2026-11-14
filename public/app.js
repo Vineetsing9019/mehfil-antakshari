@@ -7,8 +7,18 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const DEFAULT_SEEDS = ['Mehfil', 'Sargam', 'Taal', 'Raag', 'Dhun', 'Geet', 'Sur', 'Lehar', 'Jhankaar', 'Tarana', 'Ghazal', 'Qawwali'];
-// Classic default avatar: the person's initials on a soft background (no cartoon faces).
-const dice = seed => `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(seed)}&backgroundColor=b6e3f4,c0aede,ffd5dc,ffdfbf,d1d4f9&fontWeight=600`;
+// Classic default avatar: the person's initials on a rich colour, drawn here in the browser.
+// Nothing is loaded from another site, so names are never sent anywhere.
+const AV_COLORS = ['#7c3aed', '#db2777', '#ea580c', '#0d9488', '#2563eb', '#c026d3', '#b45309', '#4f46e5'];
+const dice = seed => {
+  const s = String(seed || 'Mehfil');
+  const words = s.trim().split(/\s+/).filter(Boolean);
+  const ini = ((words[0]?.[0] || 'M') + (words.length > 1 ? words[words.length - 1][0] : '')).toUpperCase();
+  const h = [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="${AV_COLORS[h % AV_COLORS.length]}"/>`
+    + `<text x="50" y="50" dy=".36em" text-anchor="middle" font-family="Poppins,Segoe UI,Arial,sans-serif" font-size="40" font-weight="600" fill="#fff">${esc(ini)}</text></svg>`;
+  return 'data:image/svg+xml,' + encodeURIComponent(svg);
+};
 const THEMES = [['classic', 'Classic'], ['rapid', 'Rapid Fire'], ['dhun', 'Dhun round'], ['decade', 'Decade 90s'], ['actor', 'Actor round']];
 const TURNS = [20, 30, 60, 90];
 const LANGS = [['en', 'English'], ['hi', 'हिन्दी'], ['mr', 'मराठी']];
@@ -25,7 +35,9 @@ const S = {
   peers: new Map(), local: null, micPromise: null, micDenied: false, micOn: false,
   actx: null, amb: null, analysers: new Map(), form: null, modalDismiss: true,
   pendingCode: null, pendingHandle: null, sheet: null, unread: 0,
+  aiVoice: true, lyricIdx: -1, lastTouched: false, saidTurn: '',
 };
+S.aiVoice = store.get('ak-aivoice') !== 'off';
 
 const params = new URLSearchParams(location.search);
 S.pendingCode = (params.get('t') || '').toUpperCase() || null;
@@ -88,9 +100,14 @@ function speakSong(song, botToken) {
   const id = ++S.singId;
   const pitch = 0.95 + (h % 3) * 0.05;   // 0.95 to 1.05: each bot a little different, no distortion
   const lines = [...(song.sing || song.lines)];
+  const n = song.lines.length;
+  let k = 0;
   const sayNext = () => {
     if (id !== S.singId || !lines.length) return;
+    const idx = k++ % n;
     const u = new SpeechSynthesisUtterance(lines.shift());
+    // Karaoke: light up the line being sung.
+    u.onstart = () => { if (id === S.singId) { S.lyricIdx = idx; highlightLyric(); } };
     if (voice) { u.voice = voice; u.lang = voice.lang; }
     u.pitch = pitch;
     u.rate = 0.9;
@@ -101,6 +118,9 @@ function speakSong(song, botToken) {
     synth.speak(u);
   };
   sayNext();
+}
+function highlightLyric() {
+  $$('#t-stage .lyric span').forEach((el, i) => el.classList.toggle('on', i === S.lyricIdx));
 }
 // Tanpura drone and a soft dholak beat for between turns.
 function startAmbience() {
@@ -160,9 +180,11 @@ function closeModal() {
 
 /* ---------- screens ---------- */
 function show(id) {
-  ['join', 'lobby', 'table'].forEach(s => { $('#screen-' + s).hidden = s !== id; });
-  $('#mechip').hidden = !S.named;
-  window.scrollTo(0, 0);
+  const was = ['boot', 'join', 'lobby', 'table'].find(s => !$('#screen-' + s).hidden);
+  ['boot', 'join', 'lobby', 'table'].forEach(s => { $('#screen-' + s).hidden = s !== id; });
+  document.body.classList.toggle('on-table', id === 'table');
+  $('#mechip').hidden = !S.named || id === 'boot';
+  if (was !== id) window.scrollTo(0, 0);
 }
 function renderMe() {
   const btn = $('#mechip');
@@ -179,8 +201,8 @@ function av(p, extra = '') {
 
 /* ---------- socket ---------- */
 const socket = io({ transports: ['websocket', 'polling'] });
-socket.on('connect', () => socket.emit('hello', { token: S.token }));
-socket.on('disconnect', () => toast('Connection lost. Reconnecting…'));
+socket.on('connect', () => { $('#netbar').hidden = true; socket.emit('hello', { token: S.token }); });
+socket.on('disconnect', () => { $('#netbar').hidden = false; });
 socket.on('me', m => {
   S.me = m.profile; S.named = m.named;
   renderMe();
@@ -190,8 +212,9 @@ socket.on('me', m => {
   if (S.pendingHandle) { const h = S.pendingHandle; S.pendingHandle = null; history.replaceState({}, '', '/'); openProfileByHandle(h); }
 });
 socket.on('profile:saved', m => {
+  const editing = S.form?.mode === 'edit';
   S.me = m.profile; S.named = true; renderMe(); closeModal();
-  toast('Profile saved ✓');
+  if (editing) toast('Profile saved ✓');
   if (!S.table) showLobby();
   if (S.pendingCode) { socket.emit('table:join', { code: S.pendingCode }); S.pendingCode = null; history.replaceState({}, '', '/'); }
 });
@@ -242,7 +265,11 @@ socket.on('rtc', ({ from, data }) => handleRtc(from, data));
 /* ---------- navigation ---------- */
 function showJoin() {
   show('join');
+  const note = $('#join-invite');
+  note.hidden = !S.pendingCode;
+  if (S.pendingCode) note.textContent = `🎤 You're invited to table ${S.pendingCode}. Type your name to join.`;
   renderProfileForm('#form-join', { mode: 'create' });
+  setTimeout(() => $('#form-join [data-f=name]')?.focus(), 50);
 }
 function showLobby() {
   show('lobby');
@@ -270,28 +297,45 @@ function statusText(p) {
   if (p.status === 'room') return 'At a table';
   return 'Free to sing';
 }
+// One person card: avatar, name, status, and a small Invite button (secondary, never orange).
+function personCard(p) {
+  const canInvite = p.status === 'free' && !S.sent.has(p.token);
+  const btn = canInvite
+    ? `<button class="btn btn-line btn-sm" data-act="req" data-arg="${esc(p.token)}">Invite</button>`
+    : `<span class="pstate">${S.sent.has(p.token) ? 'Invited' : 'Busy'}</span>`;
+  return `<div class="icard" data-act="profile" data-arg="${esc(p.token)}">${av(p)}
+    <div class="who"><div class="nm">${esc(p.name)}${p.bot ? '<span class="aib">AI</span>' : p.verified ? '<span class="tick">✓</span>' : ''}</div>
+    <div class="hd">${p.bot ? esc(p.bio || 'AI singer') : '@' + esc(p.handle) + (p.city ? ' · ' + esc(p.city) : '')}</div>
+    ${p.bot ? '' : `<div class="st ${p.status === 'free' ? '' : 'busy'}">${statusText(p)}</div>`}</div>
+    <div class="col">${btn}</div></div>`;
+}
 function renderLobby() {
   if (S.table) return;
-  const q = ($('#search')?.value || '').trim().toLowerCase();
-  const list = S.lobby.people.filter(p => (p.name + ' ' + p.handle).toLowerCase().includes(q));
-  $('#lobby-tables').innerHTML = S.lobby.tables.length
-    ? S.lobby.tables.map(t => `<div class="tcard"><div><b>${t.type === 'jam' ? '🎶 Jam table' : '🎤 Game table'}</b><small>Host: ${esc(t.host)} · ${t.count}/${t.max}${t.theme ? ' · ' + esc(t.theme) : ''}${t.state === 'playing' ? ' · in a game (join as listener)' : ''}</small></div><button class="btn btn-primary btn-sm" data-act="join-tap" data-arg="${esc(t.code)}">Join</button></div>`).join('')
-    : '<div class="empty">No open tables yet. Start one and share the link!</div>';
-  $('#online-count').textContent = S.lobby.people.length ? `· ${S.lobby.people.length}` : '';
-  $('#stories').innerHTML = S.lobby.people.filter(p => p.status === 'free').slice(0, 20).map(p =>
+  const first = (S.me?.name || '').split(' ')[0];
+  $('#hello').textContent = first ? `Namaste, ${first} 👋` : '';
+  // Open tables: only shown when there are some.
+  $('#tables-card').hidden = !S.lobby.tables.length;
+  $('#lobby-tables').innerHTML = S.lobby.tables.map(t => `<div class="tcard"><div><b>${t.type === 'jam' ? '🎶 Sing together' : '🎤 Antakshari'}</b><small>Host: ${esc(t.host)} · ${t.count}/${t.max}${t.theme ? ' · ' + esc(t.theme) : ''}${t.state === 'playing' ? ' · game on, join to listen' : ''}</small></div><button class="btn btn-line btn-sm" data-act="join-tap" data-arg="${esc(t.code)}">Join</button></div>`).join('');
+  // Real people and AI singers are always shown apart.
+  const humans = S.lobby.people.filter(p => !p.bot), ais = S.lobby.people.filter(p => p.bot);
+  $('#friends-card').hidden = !humans.length;
+  $('#search').hidden = humans.length <= 8;
+  const q = $('#search').hidden ? '' : ($('#search').value || '').trim().toLowerCase();
+  const list = humans.filter(p => (p.name + ' ' + p.handle).toLowerCase().includes(q));
+  $('#online-count').textContent = humans.length ? `· ${humans.length}` : '';
+  $('#stories').innerHTML = humans.filter(p => p.status === 'free').slice(0, 20).map(p =>
     `<button class="story" data-act="profile" data-arg="${esc(p.token)}" aria-label="${esc(p.name)}"><span class="ringed">${av(p)}</span><small>${esc(p.handle)}</small></button>`).join('');
-  $('#people').innerHTML = list.length
-    ? list.map(p => `<div class="icard">${av(p)}<div class="who"><div class="nm">${esc(p.name)}${p.verified ? '<span class="tick">✓</span>' : ''}</div><div class="hd">@${esc(p.handle)}${p.city ? ' · ' + esc(p.city) : ''}</div><div class="st ${p.status === 'free' ? '' : 'busy'}">${statusText(p)}</div></div>
-        <div class="col">${p.status === 'free' && !S.sent.has(p.token)
-          ? `<button class="btn btn-primary btn-sm" data-act="req" data-arg="${esc(p.token)}">Request</button>`
-          : `<button class="btn btn-line btn-sm" data-act="profile" data-arg="${esc(p.token)}" ${p.status !== 'free' ? '' : 'disabled'}>${S.sent.has(p.token) ? 'Requested' : 'Busy'}</button>`}</div></div>`).join('')
-    : `<div class="empty">${S.lobby.people.length ? 'No singer matches your search' : 'No one else is online yet. Share your table link with friends, or wait: singers appear here as they join.'}</div>`;
+  $('#people').innerHTML = list.length ? list.map(personCard).join('') : '<div class="empty">No one matches your search</div>';
+  // Six AI singers are enough to choose from; the rest are one tap away.
+  const shown = S.showAllAI ? ais : ais.slice(0, 6);
+  $('#ai-people').innerHTML = shown.map(personCard).join('')
+    + (ais.length > shown.length ? `<button class="btn btn-text btn-sm more-ai" data-act="all-ai">See all ${ais.length} AI singers</button>` : '');
   renderBoard();
 }
 function renderBoard() {
   $('#board').innerHTML = S.board.length
     ? S.board.map((r, i) => `<li><span>${i + 1}.</span><b>${esc(r.name)}</b><span class="muted">@${esc(r.handle)}</span><b>${r.points}</b></li>`).join('')
-    : '<li class="muted">Sing a song this week to get on the board!</li>';
+    : '<li class="board-empty">No scores yet this week.<br>Win a song to be first on the board.</li>';
 }
 
 /* ---------- profile form (create and edit) ---------- */
@@ -329,9 +373,23 @@ function renderProfileForm(sel, opts) {
   S.form = { mode, draft, sel, handleTouched: !!draft.handle, edit: mode === 'edit' };
   const box = $(sel);
   const preview = draft.photo || (mode === 'edit' && !draft.photoChanged ? S.me?.photo : null) || dice(draft.name || 'Mehfil');
+  if (mode === 'create') {
+    // First visit: only a name. Photo, username, city and bio can be added later in Edit profile.
+    box.innerHTML = `
+      <div class="join-form">
+        <span class="ringed"><span class="av av-lg"><img data-preview src="${esc(preview)}" alt=""></span></span>
+        <label class="field"><span>What should we call you?</span>
+          <input data-f="name" maxlength="20" placeholder="Your name" autocomplete="given-name" enterkeyhint="go" value="${esc(draft.name)}"></label>
+        <button class="btn btn-primary btn-block btn-lg" data-act="save-profile">Let's sing →</button>
+        <p class="fine">You can add a photo and more later from your profile.</p>
+      </div>`;
+    const nameIn = $(sel + ' [data-f=name]');
+    nameIn.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); saveProfile(); } };
+    return;
+  }
   box.innerHTML = `
     <div class="photopick">
-      <span class="ringed">${`<span class="av"><img src="${esc(preview)}" alt=""></span>`}</span>
+      <span class="ringed"><span class="av"><img data-preview src="${esc(preview)}" alt=""></span></span>
       <div class="pickrow">
         <label class="btn btn-line btn-sm">📷 Upload photo<input type="file" accept="image/*" hidden data-pick="photo"></label>
         <label class="btn btn-line btn-sm">🤳 Selfie<input type="file" accept="image/*" capture="user" hidden data-pick="photo"></label>
@@ -359,6 +417,8 @@ document.addEventListener('input', e => {
     d.handle = slug(e.target.value);
     const h = $(S.form.sel + ' [data-f=handle]'); if (h) h.value = d.handle;
   }
+  // The avatar shows the initials of the name as it is typed.
+  if (f === 'name' && !d.photo) { const img = $(S.form.sel + ' [data-preview]'); if (img) img.src = dice(e.target.value || 'Mehfil'); }
 });
 document.addEventListener('change', async e => {
   const kind = e.target.dataset.pick;
@@ -396,6 +456,16 @@ function openProfile(token) {
   if (!p) return toast('That singer is not around right now');
   const followed = !!p.followed;
   const busy = p.status && p.status !== 'free';
+  if (p.bot) {
+    const first = esc(p.name.split(' ')[0]);
+    return modal(`<div class="av" style="width:96px;height:96px;margin:0 auto 10px"><img src="${esc(p.photo || dice(p.name))}" alt="" style="width:100%;height:100%;object-fit:cover"></div>
+      <h3>${esc(p.name)}<span class="aib">AI</span></h3>
+      <p class="muted">AI singer${p.city ? ' · 📍 ' + esc(p.city) : ''}</p>
+      ${p.bio ? `<p>${esc(p.bio)}</p>` : ''}
+      <p class="muted">Sings original Mehfil songs out loud, with the lyrics on screen.</p>
+      <div class="row">${!busy && !S.sent.has(token) && !S.table ? `<button class="btn btn-primary" data-act="req" data-arg="${esc(token)}">Sing with ${first}</button>` : ''}
+        <button class="btn btn-text" data-act="close">Close</button></div>`);
+  }
   modal(`<div class="av" style="width:96px;height:96px;margin:0 auto 10px">${`<img src="${esc(p.photo || dice(p.defaultSeed || 'Mehfil'))}" alt="" style="width:100%;height:100%;object-fit:cover">`}</div>
     <h3>${esc(p.name)}${p.verified ? '<span class="tick">✓</span>' : ''}</h3>
     <p class="muted">@${esc(p.handle)}${p.city ? ' · 📍 ' + esc(p.city) : ''}</p>
@@ -425,10 +495,14 @@ function renderTable() {
   $('#t-type').textContent = v.type === 'jam' ? '🎶 Sing together' : '🎤 Antakshari';
   $('#t-code').textContent = v.code;
   $('#t-tap').hidden = !S.audioBlocked;
+  // Start shows only when it can be pressed; alone, the box below explains how to get a second singer.
   const st = $('#t-start');
-  st.hidden = !(v.isHost && v.type === 'game' && v.state !== 'playing');
-  st.disabled = v.members.length < 2;
+  st.hidden = !(v.isHost && v.type === 'game' && v.state !== 'playing' && v.members.length >= 2);
   st.textContent = v.state === 'over' ? 'Play again' : 'Start game';
+  // A new turn of mine starts with empty boxes (nothing left over from an earlier turn).
+  if (v.type === 'game' && v.state === 'playing' && v.turn === S.token && v.turn + ':' + v.trail.length !== S.lastTurnKey) {
+    S.draft = {}; S.lastTouched = false;
+  }
   renderStage();
   renderAction();
   renderSheet();
@@ -440,12 +514,19 @@ function renderTable() {
   const key = v.turn + ':' + v.trail.length;
   if (v.type === 'game' && v.state === 'playing' && key !== S.lastTurnKey) {
     S.lastTurnKey = key;
-    if (v.turn === S.token) { chime([523, 659, 784]); navigator.vibrate?.(200); }
+    if (v.turn === S.token) {
+      chime([523, 659, 784]); navigator.vibrate?.(200);
+      S.lastTouched = false;
+      $('#sr').textContent = `Your turn. Sing a song starting with ${v.letter}.`;
+      // Bring the song box and the Done button into view, clear of the bottom bar.
+      setTimeout(() => $('#t-action')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60);
+    }
     const botNow = v.members.find(m => m.token === v.turn)?.bot;
     S.singId++;   // stop any line that is still waiting to be spoken
+    S.lyricIdx = -1;
     window.speechSynthesis?.cancel();
-    if (botNow && v.botSing) speakSong(v.botSing, v.turn);
-    else if (v.botSong && botNow) hum(v.botSong);
+    if (botNow && v.botSing && S.aiVoice) speakSong(v.botSing, v.turn);
+    else if (v.botSong && botNow && S.aiVoice) hum(v.botSong);
   }
   if (S.amb) S.amb.master.gain.value = v.turn ? .15 : .5;
   applyMic();
@@ -465,7 +546,7 @@ function renderStage() {
     const onStage = v.type === 'jam' && m.isStage;
     return `<div class="seat ${isTurn ? 'turn' : ''} ${out ? 'out' : ''}" style="left:${x}%;top:${y}%" title="${esc(m.name)}">
       <div class="seatav">${av(m)}${m.isHost ? '<span class="crown">👑</span>' : ''}${isTurn || onStage ? '<span class="micb">🎤</span>' : ''}</div>
-      <div class="nm">${esc(m.name)}${m.role === 'listener' ? ' · listening' : ''}</div>${hearts}
+      <div class="nm">${m.bot ? '<span class="aib">AI</span>' : ''}${esc(m.name.split(' ')[0])}${m.role === 'listener' ? ' · listening' : ''}</div>${hearts}
       ${v.type === 'game' ? `<div class="meta">${m.score} pts${teams && m.team ? ' · ' + m.team : ''}</div>` : ''}</div>`;
   }).join('');
   const verify = v.verifying ? `<div class="verify">
@@ -481,8 +562,7 @@ function renderStage() {
       <div class="letter">${esc(v.letter)}</div><div class="secs">${esc(v.deva || '')}</div>
       <div class="secs" id="secs"></div>
       <div class="eq" id="eq">${'<i></i>'.repeat(16)}</div>
-      <div class="secs">${v.turn === S.token ? 'You are singing' : esc(turnName(v)) + ' is singing'}${v.botSong ? ` · 🎵 “${esc(v.botSong)}”` : ''}</div>
-      ${v.botSing ? `<div class="lyric">${v.botSing.lines.map(l => esc(l)).join('<br>')}</div>` : ''}
+      <div class="secs">${v.turn === S.token ? 'Your turn' : esc(turnName(v).split(' ')[0]) + ' is singing'}</div>
       <div class="clapbar"><i style="width:${Math.min(100, v.claps * 12)}%"></i></div></div>`;
   } else {
     const winner = v.winnerTeam ? (v.winnerTeam === 'tie' ? 'A tie!' : `Team ${v.winnerTeam} wins`) : `${v.members.find(m => m.token === v.winnerToken)?.name || 'Someone'} wins`;
@@ -492,8 +572,21 @@ function renderStage() {
   const teamLine = teams && v.teamTotals ? `<div class="teams"><span>Team A <b>${v.teamTotals.A}</b></span><span>Team B <b>${v.teamTotals.B}</b></span></div>` : '';
   const crowd = v.crowdFav ? `<div class="secs" style="text-align:center;margin-top:6px">🎉 Crowd favourite: ${esc(v.members.find(m => m.token === v.crowdFav)?.name || '')}</div>` : '';
   const ring = v.state === 'playing' && v.type === 'game' ? `<svg class="ring" id="ring" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffc145"/><stop offset="1" stop-color="#ff4f9a"/></linearGradient></defs><circle class="track" cx="50" cy="50" r="47"/><circle class="prog" id="ring-prog" cx="50" cy="50" r="47" pathLength="100" stroke-dasharray="100" stroke-dashoffset="0"/></svg>` : '';
-  $('#t-stage').innerHTML = `<div class="stage" id="stage"><div class="rug"></div>${ring}<div class="center">${center}</div>${seats}${verify}</div>${teamLine}${crowd}`;
+  // A bot's lyrics sit under the stage, one line lit at a time (karaoke).
+  // Under the circle: what the bot is singing (title and lyrics), or the last song sung.
+  const lyric = v.state === 'playing' && v.botSing
+    ? `<div class="lyric" aria-label="Lyrics"><div class="lyric-title">🎵 ${esc(v.botSing.title)}</div>${v.botSing.lines.map((l, i) => `<span class="${i === S.lyricIdx ? 'on' : ''}">${esc(l)}</span>`).join('')}</div>`
+    : v.state === 'playing' && v.botSong && v.members.find(m => m.token === v.turn)?.bot ? `<div class="lastsong">🎵 Singing “${esc(v.botSong)}”</div>`
+    : v.state === 'playing' ? lastSongLine(v) : '';
+  $('#t-stage').innerHTML = `<div class="stage" id="stage"><div class="rug"></div>${ring}<div class="center">${center}</div>${seats}${verify}</div>${lyric}${teamLine}${crowd}`;
   if (v.state === 'playing' && v.type === 'game') tickOnce();
+}
+// "Last: song by name" under the letter, so the next singer has context.
+function lastSongLine(v) {
+  const last = [...v.trail].reverse().find(x => x.song);
+  if (!last) return '';
+  const who = v.members.find(m => m.token === last.by)?.name.split(' ')[0] || 'Someone';
+  return `<div class="lastsong">Last: “${esc(last.song)}” · ${esc(who)}</div>`;
 }
 
 function tickOnce() {
@@ -544,7 +637,8 @@ function renderAction() {
       ${v.nowPlaying ? `<div class="nowplay">♪ Now singing: <b>${esc(v.nowPlaying.title)}</b> <span class="muted">by ${esc(v.nowPlaying.name)}</span></div>` : ''}
       <form class="queue-row" data-form="queue"><input id="q-in" maxlength="80" placeholder="Add a song to the queue" autocomplete="off" aria-label="Song title"><button class="btn btn-line btn-sm" type="submit">Add</button></form>
       <div class="queue">${v.queue.length ? v.queue.map(q => `<div class="q"><span>${esc(q.title)}</span><small>${esc(q.name)}</small></div>`).join('') : '<div class="muted">The queue is empty</div>'}</div>
-      <div class="row"><button class="btn btn-primary btn-sm" data-act="stage">${v.stage === S.token ? 'Step down' : '🎤 Take the stage'}</button><button class="btn btn-line btn-sm" data-act="queue-next">Next song ▶</button></div>`;
+      <div class="row"><button class="btn btn-primary btn-sm" data-act="stage">${v.stage === S.token ? 'Step down' : '🎤 Take the stage'}</button><button class="btn btn-line btn-sm" data-act="queue-next">Next song ▶</button></div>
+      ${v.members.length < 2 ? '<div class="row"><button class="btn btn-line btn-sm" data-act="share-wa">Invite on WhatsApp</button><button class="btn btn-text btn-sm" data-act="copy">Copy link</button></div>' : ''}`;
     return;
   }
   if (v.state === 'playing') {
@@ -552,17 +646,23 @@ function renderAction() {
       box.classList.add('yourturn');
       const hint = S.hints && S.hints.letter === v.letter ? `<div class="hints">${S.hints.titles.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : '';
       box.innerHTML = `<div class="act-title">Your turn 🎤</div>
-        <p class="lead">Start with <span class="chipletter">${esc(v.letter)}</span> ${esc(v.deva || '')}. ${esc(v.themeRule || '')}</p>
-        <input class="song-in" id="in-song" maxlength="80" placeholder="Song title starting with ${esc(v.letter)}" autocomplete="off" value="${esc(keep.song)}">
-        <input class="song-in" id="in-last" maxlength="30" placeholder="Last word you sang, e.g. pyaar" autocomplete="off" value="${esc(keep.last)}" style="margin-top:8px">
+        <p class="lead">Sing a song starting with <span class="chipletter">${esc(v.letter)}</span> ${esc(v.deva || '')}${v.settings.theme !== 'classic' ? '. ' + esc(v.themeRule || '') : ''}</p>
+        <input class="song-in" id="in-song" maxlength="80" placeholder="Song you sang, starting with ${esc(v.letter)}" autocomplete="off" enterkeyhint="done" value="${esc(keep.song)}">
+        <label class="lastword"><span>Last word you sang</span>
+          <input class="song-in" id="in-last" maxlength="30" placeholder="Filled from the title" autocomplete="off" enterkeyhint="done" value="${esc(keep.last)}"></label>
         <div class="hint" id="next-hint">The last word's sound sets the next letter.</div>
         ${hint}
         <div class="row">
           <button class="btn btn-primary" data-act="song-done">Done ✓</button>
           <button class="btn btn-line btn-sm" data-act="hint">💡 Hint −5</button>
-          <button class="btn btn-line btn-sm" data-act="pass">Pass −1 ❤</button>
-        </div>`;
+        </div>
+        <button class="btn btn-text btn-sm passbtn" data-act="pass">Pass this turn (−1 ❤)</button>`;
       const check = () => {
+        // The last word fills in from the song title until the singer changes it.
+        if (!S.lastTouched) {
+          const words = ($('#in-song')?.value || '').trim().split(/\s+/);
+          $('#in-last').value = words[words.length - 1] || '';
+        }
         const s = ($('#in-song')?.value || '').trim(), f = (s.match(/[a-z]/i) || [''])[0].toUpperCase();
         S.draft = { song: $('#in-song')?.value || '', last: $('#in-last')?.value || '' };
         const hintEl = $('#next-hint');
@@ -572,9 +672,13 @@ function renderAction() {
         hintEl.className = 'hint' + (s && f !== v.letter ? ' warn' : '');
         hintEl.innerHTML = s && f !== v.letter ? `Has to start with <b>${esc(v.letter)}</b>` : l ? `Next singer gets <b>${esc(nextLetterClient(lastVal))}</b>` : "The last word's sound sets the next letter.";
       };
-      $('#in-song').oninput = check; $('#in-last').oninput = check; check();
-      $('#in-last').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); $('[data-act=song-done]')?.click(); } };
-      if (!keep.song) $('#in-song').focus();
+      $('#in-song').oninput = check;
+      $('#in-last').oninput = () => { S.lastTouched = !!$('#in-last').value; check(); };
+      check();
+      const submitOnEnter = e => { if (e.key === 'Enter') { e.preventDefault(); $('[data-act=song-done]')?.click(); } };
+      $('#in-song').onkeydown = submitOnEnter;
+      $('#in-last').onkeydown = submitOnEnter;
+      if (!keep.song) $('#in-song').focus({ preventScroll: true });
       return;
     }
     if (v.verifying) {
@@ -582,16 +686,29 @@ function renderAction() {
       return;
     }
     const listener = myMember(v)?.role === 'listener';
-    box.innerHTML = `<div class="act-title">${esc(turnName(v))} is singing</div>
-      <p class="lead">${listener ? 'You are listening. You can sing in the next round.' : 'Listen, react, and think of a song for the letter they end on.'}</p>`;
+    box.innerHTML = `<div class="act-title">${listener ? 'You are listening 🎧' : 'Listen and cheer 👏'}</div>
+      <p class="lead">${listener ? 'You can sing in the next round. Tap React to cheer.' : 'Tap React to cheer, and think of a song for the letter they end on.'}</p>`;
     return;
   }
   if (v.state === 'over') {
     box.innerHTML = `<div class="act-title">Game over</div><p class="lead">${v.isHost ? 'Press Play again at the top to start another round.' : 'Waiting for the host to start another round.'}</p>`;
     return;
   }
-  box.innerHTML = `<div class="act-title">Waiting for singers</div>
-    <p class="lead">${v.isHost ? 'Share the link with friends. When everyone is in, press Start game at the top.' : 'Waiting for the host to start. Say hello in chat!'}</p>`;
+  if (!v.isHost) {
+    box.innerHTML = `<div class="act-title">Waiting for the host</div>
+      <p class="lead">The game starts when the host presses Start. Say hello in chat!</p>`;
+    return;
+  }
+  // Waiting room for the host. Alone: sharing is the one primary action.
+  // With 2 or more: Start game (at the top) is the primary, so these become secondary.
+  const alone = v.members.length < 2;
+  box.innerHTML = `<div class="act-title">${alone ? 'Invite your singers' : `${v.members.length} singers in. Ready?`}</div>
+    <p class="lead">${alone ? 'Friends join from your link. AI singers join at once.' : 'Press Start game at the top, or invite more (up to 6).'}</p>
+    <div class="row">
+      <button class="btn ${alone ? 'btn-primary' : 'btn-line'}" data-act="share-wa">Invite on WhatsApp</button>
+      <button class="btn btn-line btn-sm" data-act="add-bot">🤖 Add AI singer</button>
+    </div>
+    <button class="btn btn-text btn-sm" data-act="copy">Copy link</button>`;
 }
 function nextLetterClient(word) {
   const w = String(word).toLowerCase().replace(/[^a-z]/g, '');
@@ -687,6 +804,7 @@ function renderSheet() {
       <button class="btn btn-line btn-sm" data-act="mic-test">🎙 Mic check</button>
       <button class="btn btn-line btn-sm" data-act="music">${S.amb ? '🔇 Music off' : '🎵 Music on'}</button>
     </div>
+    <label class="switch">AI singers sing out loud <input type="checkbox" ${S.aiVoice ? 'checked' : ''} data-act="ai-voice" aria-label="AI voice"></label>
     ${settingsHtml(v)}
     <button class="btn btn-text btn-block" data-act="leave" style="margin-top:14px">Leave table</button>`;
 }
@@ -716,7 +834,9 @@ function showOver() {
     <p>${v.trail.filter(t => !t.system).length} songs sung</p>
     ${v.crowdFav ? `<p>🎉 Crowd favourite: <b>${esc(v.members.find(m => m.token === v.crowdFav)?.name || '')}</b></p>` : ''}
     <div class="board">${ranked.map((p, i) => `<div class="${p.token === v.winnerToken ? 'win' : ''}"><span>${i + 1}.</span>${av(p)}<span class="n">${esc(p.name)}${p.team ? ' · ' + p.team : ''}</span><b>${p.score}</b></div>`).join('')}</div>
-    <div class="row">${v.isHost ? '<button class="btn btn-primary" data-act="start">Play again</button><button class="btn btn-line" data-act="close">Back to table</button>' : '<button class="btn btn-primary" data-act="close">Back to table</button>'}</div>`);
+    <div class="row">${v.isHost ? '<button class="btn btn-primary" data-act="start">Play again</button>' : '<button class="btn btn-primary" data-act="close">Back to table</button>'}
+      <button class="btn btn-line" data-act="share-result">Share on WhatsApp</button></div>
+    ${v.isHost ? '<div class="row"><button class="btn btn-text btn-sm" data-act="close">Back to table</button></div>' : ''}`);
   confetti();
 }
 function confetti() {
@@ -857,10 +977,25 @@ function joinCode(code) {
   socket.emit('table:join', { code: c });
 }
 const ACT = {
+  'quick-play': () => socket.emit('table:quick'),
   'start-game': () => socket.emit('table:create', { type: 'game' }),
   'start-jam': () => socket.emit('table:create', { type: 'jam' }),
+  'add-bot': () => socket.emit('table:addbot'),
+  'all-ai': () => { S.showAllAI = true; renderLobby(); },
+  'show-code': () => { $('#code-form').hidden = false; $('#show-code').hidden = true; $('#code-in').focus(); },
   'join-tap': arg => joinCode(arg),
-  req: arg => { socket.emit('invite', { token: arg }); S.sent.add(arg); if (!S.table) renderLobby(); toast('Request sent'); },
+  req: arg => { socket.emit('invite', { token: arg }); S.sent.add(arg); closeModal(); if (!S.table) renderLobby(); },
+  'ai-voice': () => {
+    S.aiVoice = !S.aiVoice;
+    store.set('ak-aivoice', S.aiVoice ? 'on' : 'off');
+    if (!S.aiVoice) { S.singId++; window.speechSynthesis?.cancel(); }
+  },
+  'share-result': () => {
+    const v = S.table; if (!v) return;
+    const winner = v.winnerToken === S.token ? 'I won' : `${v.members.find(m => m.token === v.winnerToken)?.name || 'Someone'} won`;
+    const msg = `${winner} a round of Antakshari on Mehfil! 🎤 ${v.trail.filter(t => t.song).length} songs sung. Play with me: ${location.origin}/?t=${v.code}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+  },
   profile: arg => openProfile(arg),
   'profile-me': () => openProfile(S.token),
   'edit-profile': () => openEditProfile(),
@@ -880,7 +1015,17 @@ const ACT = {
   privacy: () => modal(`<h3>Privacy</h3><p>Mehfil stores your name, username, city, bio, photos, singing stats and reports. Others can see your name, username, city, bio, photos and stats. Use "Delete my profile" on your profile to remove them.</p><div class="row"><button class="btn btn-primary" data-act="close">OK</button></div>`),
   'invite-yes': arg => { socket.emit('invite:respond', { fromToken: arg, accept: true }); S.invites.shift(); closeModal(); if (S.invites.length) renderInvite(); },
   'invite-no': arg => { socket.emit('invite:respond', { fromToken: arg, accept: false }); S.invites.shift(); closeModal(); if (S.invites.length) renderInvite(); },
-  leave: () => { socket.emit('table:leave'); leaveLocal(); },
+  leave: () => {
+    // Leaving in the middle of a game loses your seat, so ask first.
+    const v = S.table, me = v && myMember(v);
+    if (v?.type === 'game' && v.state === 'playing' && me?.role === 'singer' && me.lives > 0) {
+      closeSheet();
+      return modal(`<h3>Leave the game?</h3><p>You'll lose your seat in this round.</p>
+        <div class="row"><button class="btn btn-primary" data-act="close">Keep singing</button><button class="btn btn-line" data-act="leave-yes">Leave</button></div>`);
+    }
+    ACT['leave-yes']();
+  },
+  'leave-yes': () => { closeModal(); socket.emit('table:leave'); leaveLocal(); },
   start: () => socket.emit('table:start'),
   set: arg => {
     const [k, raw] = arg.split('=');
@@ -891,7 +1036,7 @@ const ACT = {
   kick: arg => { if (confirm('Remove this singer from the table?')) socket.emit('table:kick', { token: arg }); },
   'song-done': () => {
     socket.emit('turn:done', { song: $('#in-song')?.value || '', lastWord: $('#in-last')?.value || '' });
-    S.draft = {};
+    S.draft = {}; S.lastTouched = false;
   },
   pass: () => socket.emit('turn:pass'),
   hint: () => socket.emit('turn:hint'),
@@ -992,6 +1137,10 @@ $('#search')?.addEventListener('input', () => renderLobby());
   if (L) L.innerHTML = '<i style="background:var(--gold);box-shadow:0 0 12px var(--gold)"></i><i style="background:var(--pink);box-shadow:0 0 12px var(--pink)"></i><i style="background:var(--teal);box-shadow:0 0 12px var(--teal)"></i><i style="background:var(--saffron);box-shadow:0 0 12px var(--saffron)"></i>'.repeat(Math.max(3, Math.floor(innerWidth / 60)));
 })();
 S.iceReady = fetch('/config').then(r => r.json()).then(c => { S.ice = c.iceServers; }).catch(() => {});
-show('join');
+// Keyboard: Enter or Space on a role="button" element (like the table code) acts like a tap.
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('[role=button][data-act]')) { e.preventDefault(); e.target.click(); }
+});
+show('boot');
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 })();

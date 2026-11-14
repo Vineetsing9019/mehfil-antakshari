@@ -50,7 +50,7 @@ function makeBots() {
     id: `bot-${p.handle}`,
     bot: true,
     avatar: '🎤',
-    photo: `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(p.name)}&backgroundColor=b6e3f4,c0aede,ffd5dc,ffdfbf,d1d4f9&fontWeight=600`,
+    photo: null, // the browser draws the initials, so nothing is loaded from another site
     followers: fmt(rand(800, 25000)),
     sung: rand(40, 900),
     wins: rand(3, 120),

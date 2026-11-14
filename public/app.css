@@ -343,5 +343,92 @@ a{color:var(--gold)}
 
 #sheet-root:empty{display:none}
 
-/* Bot lyrics shown while a bot sings */
-.lyric{font-size:15px;line-height:1.5;text-align:center;margin:8px 12px;opacity:.9}
+/* ===== v4: simple first visit, one primary per screen, honest AI labels ===== */
+
+/* Colour carries meaning: gold-saffron = the one main action, teal = live (mic on, online),
+   pink = warning or your turn. Secondary buttons are calm white outlines. */
+.btn-line{border:1px solid rgba(255,255,255,.28);color:var(--text);background:rgba(255,255,255,.04)}
+.btn-line:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.5)}
+.btn-lg{min-height:52px;font-size:17px}
+.btn-xl{flex-direction:column;gap:0;min-height:68px;font-size:20px;border-radius:22px;margin-bottom:14px;letter-spacing:.01em}
+.btn-xl small{font-size:12px;font-weight:500;opacity:.8}
+
+/* loading screen */
+.boot{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
+.boot-logo{font-family:"Yatra One",serif;font-size:52px;background:linear-gradient(90deg,var(--gold),var(--saffron),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent;animation:breathe-text 1.6s ease-in-out infinite}
+@keyframes breathe-text{50%{opacity:.55}}
+
+/* first visit */
+.hero-line{font-size:clamp(26px,6.4vw,38px);line-height:1.18;font-weight:700;letter-spacing:-.01em;margin:10px 0 8px}
+.invite-note{display:inline-block;padding:8px 14px;border-radius:999px;background:rgba(255,193,69,.14);border:1px solid rgba(255,193,69,.4);color:var(--gold);font-size:14px;font-weight:500;margin-top:6px}
+.join-card{padding:22px 20px}
+.join-form{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:left}
+.join-form .field{width:100%;margin:0}
+.join-form .field>span{font-size:15px;color:var(--text);font-weight:500}
+.join-form .field input{font-size:17px;min-height:52px}
+.join-form .fine{margin-top:0}
+.av-lg{width:84px;height:84px}
+details.about{margin-top:22px;text-align:left}
+details.about summary{cursor:pointer;color:var(--muted);font-size:14px;list-style:none;text-align:center;min-height:32px}
+details.about summary::-webkit-details-marker{display:none}
+details.about summary::after{content:" ▾"}
+details.about[open] summary{margin-bottom:12px}
+details.about p{color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:8px}
+
+/* lobby */
+.grid-lobby>.card:nth-child(1),.grid-lobby>.card:nth-child(2){grid-column:auto}
+.main-col{display:flex;flex-direction:column;gap:18px;min-width:0}
+.hello{color:var(--muted);font-size:14px;margin-bottom:2px}
+.start-title{font-size:22px;font-weight:700;margin-bottom:14px}
+.start-row{margin-bottom:8px}
+/* compact choice rows: icon on the left, name and detail on the right */
+.start-row .mode{display:grid;grid-template-columns:auto 1fr;column-gap:12px;row-gap:0;align-items:center;padding:12px 14px}
+.start-row .mode-ico{grid-row:span 2;font-size:24px;line-height:1}
+.start-row .mode b{font-size:15px}
+.more-ai{grid-column:1/-1;justify-self:center}
+.code-toggle{display:block;margin:0 auto}
+.code-row{margin-top:8px}
+.icard{cursor:pointer;transition:background .15s,border-color .15s}
+.icard:hover{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.2)}
+.pstate{font-size:13px;color:var(--muted);padding:0 6px}
+.aib{display:inline-grid;place-items:center;height:17px;padding:0 6px;border-radius:6px;background:linear-gradient(90deg,var(--violet),var(--pink));color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;margin:0 5px;vertical-align:2px}
+.seat .nm .aib{margin:0 4px 0 0;height:15px;font-size:9px;padding:0 4px}
+.ai-people .hd{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.board-list li.board-empty{display:block;text-align:center;color:var(--muted);line-height:1.5}
+
+/* table */
+.t-id{cursor:pointer;border-radius:12px;padding:4px 6px;margin:-4px -6px}
+.t-id:hover{background:rgba(255,255,255,.06)}
+.copyico{color:var(--muted);font-size:14px}
+.lastsong{font-size:12px;color:var(--muted);margin-top:4px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lyric{display:flex;flex-direction:column;gap:4px;align-items:center;text-align:center;margin:10px auto 2px;max-width:440px;padding:12px 14px;border-radius:16px;background:rgba(0,0,0,.22);border:1px solid rgba(255,193,69,.18)}
+.lyric-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}
+.lyric span{font-size:15px;line-height:1.45;color:var(--muted);transition:color .25s,transform .25s}
+.lastsong{text-align:center;margin:10px auto 0}
+/* the timer ring sits a little smaller so the top seat's name never covers it */
+.rug{inset:19%}
+.ring{left:23%;top:23%;width:54%;height:54%}
+.center{inset:25%}
+.letter{font-size:clamp(42px,9vw,72px)}
+.lyric span.on{color:var(--gold);font-weight:600;transform:scale(1.04)}
+.lastword{display:block;margin-top:10px}
+.lastword>span{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.passbtn{display:block;margin:8px auto 0;color:var(--muted)}
+.quick button{min-height:40px}
+
+/* status: calm bar instead of repeated toasts; text for screen readers only */
+.netbar{position:fixed;top:0;left:0;right:0;z-index:80;padding:6px 12px;text-align:center;font-size:13px;font-weight:500;background:var(--pink);color:#fff}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* toasts never cover the table controls; the bars respect the iPhone home indicator */
+body.on-table .toasts{bottom:calc(96px + env(safe-area-inset-bottom))}
+.dock{bottom:calc(14px + env(safe-area-inset-bottom))}
+.reacttray{bottom:calc(90px + env(safe-area-inset-bottom))}
+#screen-table{padding-bottom:calc(124px + env(safe-area-inset-bottom))}
+
+/* phones: the table gets the whole screen */
+@media (max-width:600px){
+  body.on-table .top{display:none}
+  body.on-table .wrap{padding-top:30px}
+  .btn-xl{font-size:19px}
+}

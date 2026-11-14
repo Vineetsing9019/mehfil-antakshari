@@ -216,7 +216,33 @@ async function main() {
     await wait(200);
     check('host can switch back to "Take turns"', F.view.settings.voice === 'turns');
 
-    for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G]) p.s.close();
+    console.log('\n9. Play now with AI singers');
+    const Q = await person('Quinn', { handle: 'quinn' });
+    await wait(300);
+    const aiInLobby = Q.lobby.people.filter(p => p.bot);
+    check('AI singers are labelled as bots in the lobby', aiInLobby.length > 0 && aiInLobby.every(p => p.bot === true));
+    check('AI singers have no blue tick and no followers', aiInLobby.every(p => !p.verified && p.followers === 0));
+    check('AI singers have no outside photo link', aiInLobby.every(p => !p.photo));
+    Q.s.emit('table:quick');
+    await wait(500);
+    check('Play now opens a game that has already started', Q.view?.type === 'game' && Q.view?.state === 'playing', Q.view && Q.view.state);
+    check('Play now seats the player with 2 AI singers', Q.view?.members.length === 3 && Q.view.members.filter(m => m.bot).length === 2);
+    check('the player is the host', Q.view?.isHost === true);
+
+    const R = await person('Rani', { handle: 'rani' });
+    R.s.emit('table:create', { type: 'game' });
+    await wait(300);
+    R.s.emit('table:addbot');
+    await wait(300);
+    check('host can add an AI singer to a waiting table', R.view?.members.length === 2 && R.view.members.some(m => m.bot));
+    R.s.emit('table:start');
+    await wait(300);
+    check('a table with one person and one AI singer can start', R.view?.state === 'playing');
+    R.s.emit('table:addbot');
+    await wait(300);
+    check('AI singers cannot be added once the game has started', R.view?.members.length === 2);
+
+    for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G, Q, R]) p.s.close();
   } catch (err) {
     failed++;
     console.log('  ✗ test crashed:', err.message);

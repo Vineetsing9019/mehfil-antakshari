@@ -148,10 +148,11 @@ function publicPerson(token) {
   const bot = bots.has(token);
   return {
     token, bot, name: p.name, handle: p.handle, city: p.city || '', bio: p.bio || (bot ? '' : 'Singing on Antakshari 🎶'),
-    verified: !!p.verified, defaultSeed: p.defaultSeed,
+    // AI singers are labelled as AI: no blue tick, no follower count.
+    verified: !bot && !!p.verified, defaultSeed: p.defaultSeed,
     photo: bot ? p.photo : p.photo ? `/p/${token}/photo?v=${p.ver}` : null,
     posts: bot ? [] : (p.posts || []).map((_, i) => `/p/${token}/post/${i}?v=${p.ver}`),
-    sung: p.sung || 0, wins: p.wins || 0, followers: followersOf(token), badges, status,
+    sung: p.sung || 0, wins: p.wins || 0, followers: bot ? 0 : followersOf(token), badges, status,
     online: isOnline(token), tableCode: t ? t.code : null,
   };
 }
@@ -540,7 +541,7 @@ function sendInvite(fromToken, toToken) {
   }, INVITE_MS));
   emitTo(toToken, 'invite', { fromToken, name: from.name, avatar: null, photo: publicPerson(fromToken)?.photo, defaultSeed: from.defaultSeed, ms: INVITE_MS, table: mine?.code || null });
   emitTo(fromToken, 'invite:sent', { toToken });
-  emitTo(fromToken, 'toast', `Request sent to ${to.name}`);
+  emitTo(fromToken, 'toast', `Invite sent to ${to.name}`);
   if (bots.has(toToken)) setTimeout(() => respondInvite(fromToken, toToken, true), 1000 + Math.random() * 1500);
   return null;
 }
@@ -561,6 +562,11 @@ function respondInvite(fromToken, toToken, accept) {
   if (err) return emitTo(toToken, 'toast', err);
   joinTable(t, toToken);
   emitTo(fromToken, 'toast', `${to.name} joined your table`);
+}
+
+// AI singers not sitting at any table, in random order.
+function freeBots() {
+  return [...bots.keys()].filter(b => !personTable.has(b)).sort(() => Math.random() - 0.5);
 }
 
 function emitTo(token, ev, data) {
@@ -613,8 +619,32 @@ io.on('connection', socket => {
     const type = p.type === 'jam' ? 'jam' : 'game';
     leaveTable(token);
     const t = createTable(type, token, p.settings || {});
-    joinTable(t, token);
-    socket.emit('toast', type === 'jam' ? 'Jam table ready. Share the link!' : 'Table ready. Share the link, then start when everyone is in.');
+    joinTable(t, token); // the waiting room itself says what to do next, so no toast
+  });
+
+  // Play now: a game with two AI singers that starts at once.
+  socket.on('table:quick', () => {
+    if (!token || !people.get(token)?.name) return toast('Create your profile first');
+    const picks = freeBots().slice(0, 2);
+    if (!picks.length) return toast('All AI singers are busy. Try again in a minute.');
+    leaveTable(token);
+    const t = createTable('game', token);
+    joinTable(t, token, { silent: true });
+    picks.forEach(b => joinTable(t, b, { silent: true }));
+    addChat(t, null, `${picks.map(b => personOf(b).name).join(' and ')} joined. Let's sing!`);
+    startGame(t);
+  });
+
+  // The host adds an AI singer to a game that has not started.
+  socket.on('table:addbot', () => {
+    const t = myTable();
+    if (!t || t.hostToken !== token || t.type !== 'game' || t.state === 'playing') return;
+    if (singersIn(t).length >= GAME_MAX) return toast(`This table is full (${GAME_MAX} singers)`);
+    const b = freeBots()[0];
+    if (!b) return toast('All AI singers are busy right now');
+    joinTable(t, b, { silent: true });
+    addChat(t, null, `${personOf(b).name} (AI singer) joined the table`);
+    pushTable(t);
   });
 
   socket.on('table:join', (p = {}) => {
