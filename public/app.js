@@ -24,7 +24,7 @@ const S = {
   table: null, lastTurnKey: '', offset: 0, hints: null, draft: {}, overShown: '',
   peers: new Map(), local: null, micPromise: null, micDenied: false, micOn: false,
   actx: null, amb: null, analysers: new Map(), form: null, modalDismiss: true,
-  pendingCode: null, pendingHandle: null,
+  pendingCode: null, pendingHandle: null, sheet: null, unread: 0,
 };
 
 const params = new URLSearchParams(location.search);
@@ -184,7 +184,9 @@ socket.on('table', v => {
 socket.on('chat', ({ table, msg }) => {
   if (!S.table || S.table.code !== table) return;
   if (!S.table.chat.some(m => m.id === msg.id)) S.table.chat.push(msg);
+  if (S.sheet !== 'chat' && msg.from !== S.token) S.unread++;
   renderChatLog();
+  renderDock();
 });
 socket.on('react', ({ from, emoji }) => floatEmoji(emoji, from));
 socket.on('toast', toast);
@@ -381,23 +383,24 @@ function openProfile(token) {
 }
 
 /* ---------- table ---------- */
+const callModeOf = v => v.type === 'jam' || v.settings.voice === 'call';
 const turnName = v => v.members.find(m => m.token === v.turn)?.name || '';
+const myMember = v => v.members.find(m => m.token === S.token);
+
 function renderTable() {
   const v = S.table;
   if (!v) return;
-  $('#t-type').textContent = v.type === 'jam' ? '🎶 Jam' : '🎤 Game';
+  $('#t-type').textContent = v.type === 'jam' ? '🎶 Sing together' : '🎤 Antakshari';
   $('#t-code').textContent = v.code;
-  $('#music-btn').textContent = S.amb ? '🔇 Music off' : '🎵 Music';
+  $('#t-tap').hidden = !S.audioBlocked;
   const st = $('#t-start');
   st.hidden = !(v.isHost && v.type === 'game' && v.state !== 'playing');
   st.disabled = v.members.length < 2;
   st.textContent = v.state === 'over' ? 'Play again' : 'Start game';
   renderStage();
   renderAction();
-  renderMembers();
-  renderChatLog();
-  renderQuick();
-  renderSide();
+  renderSheet();
+  renderDock();
   if (v.state === 'over' && S.overShown !== v.code + ':' + v.trail.length) {
     S.overShown = v.code + ':' + v.trail.length;
     showOver();
@@ -411,6 +414,7 @@ function renderTable() {
   if (S.amb) S.amb.master.gain.value = v.turn ? .15 : .5;
   applyMic();
   applyMuting();
+  updateVoiceStatus();
 }
 
 function renderStage() {
@@ -424,9 +428,9 @@ function renderStage() {
     const hearts = v.type === 'game' ? `<div class="hearts">${'❤'.repeat(Math.max(0, m.lives))}<span style="opacity:.25">${'❤'.repeat(Math.max(0, v.settings.lives - m.lives))}</span></div>` : '';
     const onStage = v.type === 'jam' && m.isStage;
     return `<div class="seat ${isTurn ? 'turn' : ''} ${out ? 'out' : ''}" style="left:${x}%;top:${y}%" title="${esc(m.name)}">
-      <div style="position:relative;width:fit-content;margin:0 auto">${av(m)}${m.isHost ? '<span class="crown">👑</span>' : ''}${isTurn || onStage ? '<span class="micb">🎤</span>' : ''}</div>
-      <div class="nm">${esc(m.name)}${m.role === 'listener' ? ' 👂' : ''}</div>
-      ${hearts}<div class="meta">${v.type === 'game' ? `${m.score} pts${teams && m.team ? ' · ' + m.team : ''}` : ''}</div></div>`;
+      <div class="seatav">${av(m)}${m.isHost ? '<span class="crown">👑</span>' : ''}${isTurn || onStage ? '<span class="micb">🎤</span>' : ''}</div>
+      <div class="nm">${esc(m.name)}${m.role === 'listener' ? ' · listening' : ''}</div>${hearts}
+      ${v.type === 'game' ? `<div class="meta">${m.score} pts${teams && m.team ? ' · ' + m.team : ''}</div>` : ''}</div>`;
   }).join('');
   const verify = v.verifying ? `<div class="verify">
       <p>Did <b>${esc(v.members.find(m => m.token === v.verifying.singer)?.name || 'the singer')}</b> sing <b>“${esc(v.verifying.song)}”</b>? Next letter: <b>${esc(v.verifying.next)}</b></p>
@@ -434,11 +438,10 @@ function renderStage() {
       <div class="counts">👍 ${v.verifying.up} · 👎 ${v.verifying.down}</div></div>` : '';
   let center;
   if (v.type === 'jam') {
-    center = `<div><div class="letterlabel">Jam</div><div class="letter" style="font-size:44px">🎶</div>
-      <div class="secs">${v.stage ? `On stage: ${esc(v.members.find(m => m.token === v.stage)?.name || '')}` : 'The stage is free. Take it to lead a song!'}</div>
-      ${v.nowPlaying ? `<div class="secs" style="color:var(--gold)">Now singing: ${esc(v.nowPlaying.title)}</div>` : ''}</div>`;
+    center = `<div><div class="letterlabel">Sing together</div><div class="letter" style="font-size:44px">🎶</div>
+      <div class="secs">${v.stage ? `On stage: ${esc(v.members.find(m => m.token === v.stage)?.name || '')}` : 'Take the stage to lead a song'}</div></div>`;
   } else if (v.state === 'playing') {
-    center = `<div><div class="letterlabel">Sing from</div>
+    center = `<div><div class="letterlabel">Start with</div>
       <div class="letter">${esc(v.letter)}</div><div class="secs">${esc(v.deva || '')}</div>
       <div class="secs" id="secs"></div>
       <div class="eq" id="eq">${'<i></i>'.repeat(16)}</div>
@@ -447,20 +450,12 @@ function renderStage() {
   } else {
     const winner = v.winnerTeam ? (v.winnerTeam === 'tie' ? 'A tie!' : `Team ${v.winnerTeam} wins`) : `${v.members.find(m => m.token === v.winnerToken)?.name || 'Someone'} wins`;
     center = `<div class="waitmsg"><div class="letterlabel">${v.state === 'over' ? 'Game over' : 'Waiting room'}</div>
-      <div class="secs" style="font-size:15px;color:var(--text)">${v.state === 'over' ? `🏆 ${esc(winner)}` : `${v.members.length} singer${v.members.length === 1 ? '' : 's'} in · ${v.members.length < 2 ? 'waiting for more' : 'ready'}`}</div>
-      <div class="secs">${v.themeLabel ? esc(v.themeLabel) + ' · ' + esc(v.themeRule) : ''}</div></div>`;
+      <div class="secs" style="font-size:15px;color:var(--text)">${v.state === 'over' ? `🏆 ${esc(winner)}` : `${v.members.length} in · ${v.members.length < 2 ? 'waiting for more' : 'ready'}`}</div></div>`;
   }
-  const teamLine = v.settings.teams && v.teamTotals ? `<div class="teams"><span>Team A <b>${v.teamTotals.A}</b></span><span>Team B <b>${v.teamTotals.B}</b></span></div>` : '';
+  const teamLine = teams && v.teamTotals ? `<div class="teams"><span>Team A <b>${v.teamTotals.A}</b></span><span>Team B <b>${v.teamTotals.B}</b></span></div>` : '';
   const crowd = v.crowdFav ? `<div class="secs" style="text-align:center;margin-top:6px">🎉 Crowd favourite: ${esc(v.members.find(m => m.token === v.crowdFav)?.name || '')}</div>` : '';
-  $('#t-stage').innerHTML = `<div class="stage" id="stage">
-      <div class="rug"></div>
-      ${v.state === 'playing' && v.type === 'game' ? `<svg class="ring" id="ring" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffc145"/><stop offset="1" stop-color="#ff4f9a"/></linearGradient></defs><circle class="track" cx="50" cy="50" r="47"/><circle class="prog" id="ring-prog" cx="50" cy="50" r="47" pathLength="100" stroke-dasharray="100" stroke-dashoffset="0"/></svg>` : ''}
-      <div class="center">${center}</div>
-      ${seats}
-      ${verify}
-    </div>
-    ${teamLine}${crowd}
-    <div class="reactbar" role="group" aria-label="Reactions">${REACTIONS.map(e => `<button data-act="react" data-arg="${e}" aria-label="React ${e}">${e}</button>`).join('')}</div>`;
+  const ring = v.state === 'playing' && v.type === 'game' ? `<svg class="ring" id="ring" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffc145"/><stop offset="1" stop-color="#ff4f9a"/></linearGradient></defs><circle class="track" cx="50" cy="50" r="47"/><circle class="prog" id="ring-prog" cx="50" cy="50" r="47" pathLength="100" stroke-dasharray="100" stroke-dashoffset="0"/></svg>` : '';
+  $('#t-stage').innerHTML = `<div class="stage" id="stage"><div class="rug"></div>${ring}<div class="center">${center}</div>${seats}${verify}</div>${teamLine}${crowd}`;
   if (v.state === 'playing' && v.type === 'game') tickOnce();
 }
 
@@ -490,7 +485,8 @@ function animateEq(v) {
 
 function floatEmoji(emoji, from) {
   const stage = $('#stage'); if (!stage) return;
-  const seat = $$('.seat', stage).find(el => el.title === (S.table?.members.find(m => m.token === from)?.name));
+  const name = S.table?.members.find(m => m.token === from)?.name;
+  const seat = $$('.seat', stage).find(el => el.title === name);
   const el = document.createElement('span');
   el.className = 'float'; el.textContent = emoji;
   el.style.left = seat ? seat.style.left : (30 + Math.random() * 40) + '%';
@@ -499,48 +495,45 @@ function floatEmoji(emoji, from) {
   setTimeout(() => el.remove(), 2000);
 }
 
+// The one box under the stage: says what to do now, nothing more.
 function renderAction() {
   const v = S.table, box = $('#t-action');
   if (!v) return;
-  // keep what the singer has typed across re-renders
   const keep = { song: $('#in-song')?.value ?? S.draft.song ?? '', last: $('#in-last')?.value ?? S.draft.last ?? '' };
   box.classList.remove('yourturn');
-  const callMode = v.type === 'jam' || v.settings.voice === 'call';
-  const micLive = callMode ? S.micOn : (v.turn === S.token && !v.verifying && v.state === 'playing');
-  const micLine = `<div class="micstate ${micLive ? 'live' : ''}"><span class="led"></span>${S.micDenied ? 'Mic blocked by the browser' : micLive ? 'Your mic is live' : callMode ? 'Your mic is off' : 'Your mic is muted until your turn'}</div>
-    ${callMode ? `<div class="row" style="margin-top:10px"><button class="btn btn-line btn-sm" data-act="mic">${S.micOn ? '🔇 Mute' : '🎙 Unmute'}</button></div>` : ''}`;
   if (v.type === 'jam') {
-    box.innerHTML = `<h3>Jam table</h3>
-      <p class="lead">Open mic for everyone. Take the stage to lead a song, and add songs to the queue.</p>
-      <div class="row">
-        <button class="btn btn-primary" data-act="mic">${S.micOn ? '🔇 Mic off' : '🎙 Mic on'}</button>
-        <button class="btn btn-line" data-act="stage">${v.stage === S.token ? 'Leave stage' : v.stage ? 'Stage taken' : '🎤 Take stage'}</button>
-      </div>${micLine}`;
+    const onStage = v.stage && v.members.find(m => m.token === v.stage);
+    box.innerHTML = `<div class="act-title">${onStage ? `🎤 On stage: <b>${esc(onStage.name)}</b>` : 'Nobody is on stage yet'}</div>
+      ${v.nowPlaying ? `<div class="nowplay">♪ Now singing: <b>${esc(v.nowPlaying.title)}</b> <span class="muted">by ${esc(v.nowPlaying.name)}</span></div>` : ''}
+      <form class="queue-row" data-form="queue"><input id="q-in" maxlength="80" placeholder="Add a song to the queue" autocomplete="off" aria-label="Song title"><button class="btn btn-line btn-sm" type="submit">Add</button></form>
+      <div class="queue">${v.queue.length ? v.queue.map(q => `<div class="q"><span>${esc(q.title)}</span><small>${esc(q.name)}</small></div>`).join('') : '<div class="muted">The queue is empty</div>'}</div>
+      <div class="row"><button class="btn btn-primary btn-sm" data-act="stage">${v.stage === S.token ? 'Step down' : '🎤 Take the stage'}</button><button class="btn btn-line btn-sm" data-act="queue-next">Next song ▶</button></div>`;
     return;
   }
   if (v.state === 'playing') {
-    const hintBlock = S.hints && S.hints.letter === v.letter ? `<div class="hints">${S.hints.titles.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : '';
     if (v.turn === S.token && !v.verifying) {
       box.classList.add('yourturn');
-      box.innerHTML = `<h3>Your turn! 🎤</h3>
-        <p class="lead">Sing a song that starts with <span class="chipletter">${esc(v.letter)}</span> ${esc(v.deva || '')}. ${esc(v.themeRule || '')}</p>
-        <label class="field"><span>Song you're singing</span><input class="song-in" id="in-song" maxlength="80" placeholder="${esc(v.letter)}… song title" autocomplete="off" value="${esc(keep.song)}"></label>
-        <label class="field"><span>Last word you sang</span><input class="song-in" id="in-last" maxlength="30" placeholder="e.g. pyaar" autocomplete="off" value="${esc(keep.last)}"></label>
-        <div class="hint" id="next-hint">The sound of the last word sets the next letter.</div>
-        ${hintBlock}
+      const hint = S.hints && S.hints.letter === v.letter ? `<div class="hints">${S.hints.titles.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : '';
+      box.innerHTML = `<div class="act-title">Your turn 🎤</div>
+        <p class="lead">Start with <span class="chipletter">${esc(v.letter)}</span> ${esc(v.deva || '')}. ${esc(v.themeRule || '')}</p>
+        <input class="song-in" id="in-song" maxlength="80" placeholder="Song title starting with ${esc(v.letter)}" autocomplete="off" value="${esc(keep.song)}">
+        <input class="song-in" id="in-last" maxlength="30" placeholder="Last word you sang, e.g. pyaar" autocomplete="off" value="${esc(keep.last)}" style="margin-top:8px">
+        <div class="hint" id="next-hint">The last word's sound sets the next letter.</div>
+        ${hint}
         <div class="row">
-          <button class="btn btn-primary" data-act="song-done">Done singing ✓</button>
-          <button class="btn btn-line" data-act="hint">💡 Hint (−5)</button>
-          <button class="btn btn-text" data-act="pass">Pass (−1 ❤)</button>
-        </div>
-        <div class="row" style="margin-top:8px"><button class="btn btn-text btn-sm" data-act="leave">Leave table (I don't want to sing)</button></div>${micLine}`;
+          <button class="btn btn-primary" data-act="song-done">Done ✓</button>
+          <button class="btn btn-line btn-sm" data-act="hint">💡 Hint −5</button>
+          <button class="btn btn-line btn-sm" data-act="pass">Pass −1 ❤</button>
+        </div>`;
       const check = () => {
         const s = ($('#in-song')?.value || '').trim(), f = (s.match(/[a-z]/i) || [''])[0].toUpperCase();
-        const l = ($('#in-last')?.value.match(/[a-z](?=[^a-z]*$)/i) || [''])[0];
         S.draft = { song: $('#in-song')?.value || '', last: $('#in-last')?.value || '' };
-        const hint = $('#next-hint');
-        if (hint) hint.innerHTML = s && f !== v.letter ? `Has to start with <b>${esc(v.letter)}</b>` : l ? `Next singer gets <b>${esc(nextLetterClient($('#in-last').value))}</b>` : 'The sound of the last word sets the next letter.';
-        if (hint) hint.className = 'hint' + (s && f !== v.letter ? ' warn' : '');
+        const hintEl = $('#next-hint');
+        if (!hintEl) return;
+        const lastVal = $('#in-last')?.value || '';
+        const l = (lastVal.match(/[a-z](?=[^a-z]*$)/i) || [''])[0];
+        hintEl.className = 'hint' + (s && f !== v.letter ? ' warn' : '');
+        hintEl.innerHTML = s && f !== v.letter ? `Has to start with <b>${esc(v.letter)}</b>` : l ? `Next singer gets <b>${esc(nextLetterClient(lastVal))}</b>` : "The last word's sound sets the next letter.";
       };
       $('#in-song').oninput = check; $('#in-last').oninput = check; check();
       $('#in-last').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); $('[data-act=song-done]')?.click(); } };
@@ -548,24 +541,20 @@ function renderAction() {
       return;
     }
     if (v.verifying) {
-      box.innerHTML = `<h3>${v.verifying.singer === S.token ? 'Waiting for the table to vote…' : 'Listen and vote'}</h3>
-        <p class="lead">${v.verifying.singer === S.token ? 'Your song is being checked by the table.' : 'Is the song right? Use the vote on the stage.'}</p>${micLine}`;
+      box.innerHTML = `<div class="act-title">${v.verifying.singer === S.token ? 'The table is voting on your song…' : 'Vote on the song above'}</div>`;
       return;
     }
-    const meListener = v.members.find(m => m.token === S.token)?.role === 'listener';
-    box.innerHTML = `<h3>${esc(turnName(v))} is singing</h3>
-      <p class="lead">${meListener ? 'You are listening this game. You will sing next game.' : 'Listen in, send some love, and think of a song for the letter they end on!'}</p>
-      <div class="row"><button class="btn btn-text" data-act="leave">Leave table</button></div>${micLine}`;
+    const listener = myMember(v)?.role === 'listener';
+    box.innerHTML = `<div class="act-title">${esc(turnName(v))} is singing</div>
+      <p class="lead">${listener ? 'You are listening. You can sing in the next round.' : 'Listen, react, and think of a song for the letter they end on.'}</p>`;
     return;
   }
   if (v.state === 'over') {
-    box.innerHTML = `<h3>Game over</h3><p class="lead">${v.isHost ? 'Play again with the same singers, or change settings first.' : 'Waiting for the host to start another game.'}</p>
-      <div class="row">${v.isHost ? '<button class="btn btn-primary" data-act="start">Play again</button>' : ''}<button class="btn btn-text" data-act="leave">Leave table</button></div>`;
+    box.innerHTML = `<div class="act-title">Game over</div><p class="lead">${v.isHost ? 'Press Play again at the top to start another round.' : 'Waiting for the host to start another round.'}</p>`;
     return;
   }
-  box.innerHTML = `<h3>The table is gathering</h3>
-    <p class="lead">${v.isHost ? 'Invite singers below or share the link. When everyone is in, press Start.' : 'Waiting for the host to start. Say hello in the chat!'}</p>
-    <div class="row"><button class="btn btn-text" data-act="leave">Leave table</button></div>`;
+  box.innerHTML = `<div class="act-title">Waiting for singers</div>
+    <p class="lead">${v.isHost ? 'Share the link with friends. When everyone is in, press Start game at the top.' : 'Waiting for the host to start. Say hello in chat!'}</p>`;
 }
 function nextLetterClient(word) {
   const w = String(word).toLowerCase().replace(/[^a-z]/g, '');
@@ -574,21 +563,96 @@ function nextLetterClient(word) {
   return (w[i] || '').toUpperCase();
 }
 
-function renderMembers() {
-  const v = S.table, box = $('#t-members');
-  box.innerHTML = `<div class="sechead"><h2 class="card-title">Singers <span class="muted">${v.members.length}/${v.type === 'jam' ? 8 : 6}</span></h2></div>
-    <div class="members">${v.members.map(m => {
-      const role = m.isHost ? 'Host' : m.isStage ? 'On stage' : m.role === 'listener' ? 'Listening' : m.bot ? 'Bot singer' : 'Singer';
-      const hearts = v.type === 'game' && v.state !== 'lobby' ? `${'❤'.repeat(Math.max(0, m.lives))}` : '';
-      return `<div class="mrow ${!m.online ? 'off' : ''} ${v.type === 'game' && m.lives <= 0 && m.role === 'singer' ? 'out' : ''}">
-        ${av(m)}<div class="who"><div class="nm">${esc(m.name)}${m.token === S.token ? ' (you)' : ''}</div><div class="role">${role}${m.online ? '' : ' · reconnecting…'}</div></div>
-        <div class="score">${v.type === 'game' ? `${hearts} ${m.score}` : ''}${m.claps ? ' · 👏' + m.claps : ''}</div>
-        <div class="actions">
-          ${m.token !== S.token && !m.bot ? `<button class="ico" data-act="follow" data-arg="${esc(m.token)}" aria-label="${m.followed ? 'Unfollow' : 'Follow'} ${esc(m.name)}">${m.followed ? '★' : '☆'}</button>` : ''}
-          ${v.isHost && m.token !== S.token ? `<button class="ico" data-act="kick" data-arg="${esc(m.token)}" aria-label="Remove ${esc(m.name)}">✕</button>` : ''}
-          ${m.token !== S.token && !m.bot ? `<button class="ico" data-act="profile" data-arg="${esc(m.token)}" aria-label="Open profile">👤</button>` : ''}
-        </div></div>`;
-    }).join('')}</div>`;
+// Bottom bar: mic, chat, reactions, singers, settings.
+function renderDock() {
+  const v = S.table;
+  if (!v) return;
+  const callMode = callModeOf(v);
+  const live = callMode ? S.micOn : (v.state === 'playing' && v.turn === S.token && !v.verifying);
+  const mic = $('#dock-mic');
+  if (mic) {
+    mic.classList.toggle('on', !!live);
+    mic.querySelector('span').textContent = S.micDenied ? 'No mic' : live ? 'Mic on' : callMode ? 'Mic off' : 'Muted';
+  }
+  const badge = $('#dock-badge');
+  if (badge) { badge.hidden = !S.unread; badge.textContent = S.unread; }
+}
+
+function membersHtml(v) {
+  return v.members.map(m => {
+    const role = m.isHost ? 'Host' : m.isStage ? 'On stage' : m.role === 'listener' ? 'Listening' : m.bot ? 'Bot singer' : 'Singer';
+    const hearts = v.type === 'game' && v.state !== 'lobby' ? '❤'.repeat(Math.max(0, m.lives)) : '';
+    return `<div class="mrow ${!m.online ? 'off' : ''} ${v.type === 'game' && m.lives <= 0 && m.role === 'singer' ? 'out' : ''}">
+      ${av(m)}<div class="who"><div class="nm">${esc(m.name)}${m.token === S.token ? ' (you)' : ''}</div><div class="role">${role}${m.online ? '' : ' · reconnecting…'}</div></div>
+      <div class="score">${v.type === 'game' ? `${hearts} ${m.score}` : ''}${m.claps ? ' · 👏' + m.claps : ''}</div>
+      <div class="actions">
+        ${m.token !== S.token && !m.bot ? `<button class="ico" data-act="follow" data-arg="${esc(m.token)}" aria-label="${m.followed ? 'Unfollow' : 'Follow'} ${esc(m.name)}">${m.followed ? '★' : '☆'}</button>` : ''}
+        ${v.isHost && m.token !== S.token ? `<button class="ico" data-act="kick" data-arg="${esc(m.token)}" aria-label="Remove ${esc(m.name)}">✕</button>` : ''}
+        ${m.token !== S.token && !m.bot ? `<button class="ico" data-act="profile" data-arg="${esc(m.token)}" aria-label="Open profile">👤</button>` : ''}
+      </div></div>`;
+  }).join('');
+}
+
+function settingsHtml(v) {
+  if (v.type === 'jam') return '<p class="muted">Sing together has no game settings. Everyone talks, and the queue is on the main screen.</p>';
+  const s = v.settings;
+  if (!v.isHost || v.state === 'playing') {
+    return `<p class="muted">Game: ${esc(v.themeLabel)} · ${s.turnSec}s a turn · ${s.lives} ❤ · ${s.voice === 'call' ? 'everyone talks' : 'take turns'}${s.teams ? ' · teams' : ''}</p>
+      <p class="muted">Only the host can change these before a game.</p>`;
+  }
+  return `<span class="lbl">Theme</span><div class="chips">${THEMES.map(([k, l]) => `<button class="chip ${s.theme === k ? 'on' : ''}" data-act="set" data-arg="theme=${k}">${l}</button>`).join('')}</div>
+    <span class="lbl">Time per turn</span><div class="chips">${TURNS.map(t => `<button class="chip ${s.turnSec === t ? 'on' : ''}" data-act="set" data-arg="turnSec=${t}">${t}s</button>`).join('')}</div>
+    <span class="lbl">Lives</span><div class="chips">${[1, 2, 3, 4, 5].map(n => `<button class="chip ${s.lives === n ? 'on' : ''}" data-act="set" data-arg="lives=${n}">${n} ❤</button>`).join('')}</div>
+    <span class="lbl">Voice</span><div class="chips"><button class="chip ${s.voice !== 'call' ? 'on' : ''}" data-act="set" data-arg="voice=turns">Take turns</button><button class="chip ${s.voice === 'call' ? 'on' : ''}" data-act="set" data-arg="voice=call">Everyone talks</button></div>
+    <span class="lbl">Letters</span><div class="chips">${LANGS.map(([k, l]) => `<button class="chip ${s.lang === k ? 'on' : ''}" data-act="set" data-arg="lang=${k}">${l}</button>`).join('')}</div>
+    <label class="switch">Team A vs Team B <input type="checkbox" ${s.teams ? 'checked' : ''} data-act="toggle-teams" aria-label="Teams"></label>
+    <p class="muted">Press Start game at the top when everyone is in.</p>`;
+}
+
+// Chat, singers and settings open here, as small sheets over the table.
+function openSheet(name) {
+  S.sheet = name;
+  if (name === 'chat') S.unread = 0;
+  $('#sheet-root').innerHTML = `<div class="sheet-scrim" data-sheet-scrim><div class="sheet-panel" role="dialog" aria-modal="true">
+    <div class="sheet-head"><b id="sheet-title"></b><button class="sheet-x" data-act="sheet-close" aria-label="Close">✕</button></div>
+    <div id="sheet-body"></div></div></div>`;
+  renderSheet();
+  renderDock();
+  if (name === 'chat') setTimeout(() => { const l = $('#t-chatlog'); if (l) l.scrollTop = l.scrollHeight; }, 0);
+}
+function closeSheet() {
+  S.sheet = null;
+  $('#sheet-root').innerHTML = '';
+  renderDock();
+}
+function renderSheet() {
+  const v = S.table, body = $('#sheet-body');
+  if (!S.sheet || !v || !body) return;
+  const title = $('#sheet-title');
+  if (S.sheet === 'chat') {
+    title.textContent = '💬 Table chat';
+    const typed = $('#chat-in')?.value ?? '';
+    body.innerHTML = `<div class="chatlog" id="t-chatlog"></div>
+      <div class="quick">${v.quickChat.map(q => `<button data-act="quick" data-arg="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+      <form class="chat-row" data-form="chat"><input id="chat-in" maxlength="200" placeholder="Say something…" autocomplete="off" aria-label="Chat message" value="${esc(typed)}"><button class="btn btn-primary btn-sm" type="submit">Send</button></form>`;
+    renderChatLog();
+    return;
+  }
+  if (S.sheet === 'singers') {
+    title.textContent = `👥 Singers ${v.members.length}/${v.type === 'jam' ? 8 : 6}`;
+    body.innerHTML = `<div class="sechead"><span class="muted" id="voice-status"></span></div><div class="members">${membersHtml(v)}</div>`;
+    updateVoiceStatus();
+    return;
+  }
+  title.textContent = '⚙ Settings';
+  body.innerHTML = `<div class="set-share">
+      <button class="btn btn-line btn-sm" data-act="share-wa">Share on WhatsApp</button>
+      <button class="btn btn-line btn-sm" data-act="copy">Copy link</button>
+      <button class="btn btn-line btn-sm" data-act="mic-test">🎙 Mic check</button>
+      <button class="btn btn-line btn-sm" data-act="music">${S.amb ? '🔇 Music off' : '🎵 Music on'}</button>
+    </div>
+    ${settingsHtml(v)}
+    <button class="btn btn-text btn-block" data-act="leave" style="margin-top:14px">Leave table</button>`;
 }
 
 function renderChatLog() {
@@ -600,43 +664,11 @@ function renderChatLog() {
     : `<div class="msg sys">${esc(m.text)}</div>`).join('') : '<div class="msg sys">Say hello to the table 👋</div>';
   if (atBottom) box.scrollTop = box.scrollHeight;
 }
-function renderQuick() {
-  const v = S.table;
-  $('#t-quick').innerHTML = (v?.quickChat || []).map(q => `<button data-act="quick" data-arg="${esc(q)}">${esc(q)}</button>`).join('');
-}
 
-function renderSide() {
-  const v = S.table, box = $('#t-side');
-  if (v.type === 'jam') {
-    box.innerHTML = `<div class="sechead"><h2 class="card-title">🎶 Song queue</h2></div>
-      ${v.nowPlaying ? `<div class="nowplay">Now singing: <b>${esc(v.nowPlaying.title)}</b> <span class="muted">by ${esc(v.nowPlaying.name)}</span></div>` : ''}
-      <form class="queue-row" data-form="queue"><input id="q-in" maxlength="80" placeholder="Add a song title" autocomplete="off" aria-label="Song title"><button class="btn btn-line btn-sm" type="submit">Add</button></form>
-      <div class="queue">${v.queue.length ? v.queue.map(q => `<div class="q"><span>${esc(q.title)}</span><small>by ${esc(q.name)}</small></div>`).join('') : '<div class="muted">Queue is empty. Add the next song!</div>'}</div>
-      <div class="row" style="margin-top:10px"><button class="btn btn-line btn-sm" data-act="queue-next">Next song ▶</button></div>`;
-    return;
-  }
-  if (v.state === 'lobby' || v.state === 'over') {
-    if (!v.isHost) {
-      box.innerHTML = `<div class="sechead"><h2 class="card-title">Settings</h2></div>
-        <p class="muted">Theme: ${esc(v.themeLabel)} · ${v.settings.turnSec}s a turn · ${v.settings.lives} ❤ · ${v.settings.teams ? 'Teams' : 'Everyone for themselves'}</p>`;
-      return;
-    }
-    const s = v.settings;
-    box.innerHTML = `<div class="sechead"><h2 class="card-title">Game settings</h2></div>
-      <span class="lbl">Theme</span><div class="chips">${THEMES.map(([k, l]) => `<button class="chip ${s.theme === k ? 'on' : ''}" data-act="set" data-arg="theme=${k}">${l}</button>`).join('')}</div>
-      <span class="lbl">Time per turn</span><div class="chips">${TURNS.map(t => `<button class="chip ${s.turnSec === t ? 'on' : ''}" data-act="set" data-arg="turnSec=${t}">${t}s</button>`).join('')}</div>
-      <span class="lbl">Lives</span><div class="chips">${[1, 2, 3, 4, 5].map(n => `<button class="chip ${s.lives === n ? 'on' : ''}" data-act="set" data-arg="lives=${n}">${n} ❤</button>`).join('')}</div>
-      <span class="lbl">Letters</span><div class="chips">${LANGS.map(([k, l]) => `<button class="chip ${s.lang === k ? 'on' : ''}" data-act="set" data-arg="lang=${k}">${l}</button>`).join('')}</div>
-      <span class="lbl">Voice</span><div class="chips"><button class="chip ${s.voice !== 'call' ? 'on' : ''}" data-act="set" data-arg="voice=turns">Take turns</button><button class="chip ${s.voice === 'call' ? 'on' : ''}" data-act="set" data-arg="voice=call">Everyone talks</button></div>
-      <label class="switch">Team A vs Team B <input type="checkbox" ${s.teams ? 'checked' : ''} data-act="toggle-teams" aria-label="Teams"></label>
-      <p class="muted" style="text-align:center">${v.members.length < 2 ? 'Invite at least one more singer, then press Start game at the top.' : 'Press Start game at the top when everyone is in.'}</p>`;
-    return;
-  }
-  box.innerHTML = `<div class="sechead"><h2 class="card-title">🎼 Song trail</h2></div>
-    <div class="trail">${v.trail.length ? [...v.trail].reverse().map(t => t.system
-      ? `<div class="sys">${esc(t.text)}</div>`
-      : `<div class="t"><div style="flex:1;min-width:0"><b>${esc(t.song)}</b><small>${esc(v.members.find(m => m.token === t.by)?.name || 'Left')} · ${esc(t.from)} → ${esc(t.next)} (“${esc(t.lastWord)}”)</small></div><span class="pts">+${t.points}</span></div>`).join('')
-      : '<div class="sys">Songs will appear here as you sing</div>'}</div>`;
+function toggleTray() {
+  const t = $('#react-tray');
+  t.hidden = !t.hidden;
+  if (!t.hidden) t.innerHTML = REACTIONS.map(e => `<button data-act="react" data-arg="${e}" aria-label="React ${e}">${e}</button>`).join('');
 }
 
 function showOver() {
@@ -648,7 +680,7 @@ function showOver() {
     <p>${v.trail.filter(t => !t.system).length} songs sung</p>
     ${v.crowdFav ? `<p>🎉 Crowd favourite: <b>${esc(v.members.find(m => m.token === v.crowdFav)?.name || '')}</b></p>` : ''}
     <div class="board">${ranked.map((p, i) => `<div class="${p.token === v.winnerToken ? 'win' : ''}"><span>${i + 1}.</span>${av(p)}<span class="n">${esc(p.name)}${p.team ? ' · ' + p.team : ''}</span><b>${p.score}</b></div>`).join('')}</div>
-    <div class="row">${v.isHost ? '<button class="btn btn-primary" data-act="start">Play again</button>' : '<button class="btn btn-primary" data-act="close">Back to table</button>'}${v.isHost ? '<button class="btn btn-line" data-act="close">Back to table</button>' : ''}</div>`);
+    <div class="row">${v.isHost ? '<button class="btn btn-primary" data-act="start">Play again</button><button class="btn btn-line" data-act="close">Back to table</button>' : '<button class="btn btn-primary" data-act="close">Back to table</button>'}</div>`);
   confetti();
 }
 function confetti() {
@@ -666,12 +698,40 @@ function confetti() {
 function ensureMic() {
   if (!S.micPromise) {
     S.micPromise = navigator.mediaDevices?.getUserMedia
-      ? navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
-        .then(s => { S.local = s; s.getAudioTracks().forEach(t => { t.enabled = false; }); applyMic(); return s; })
-        .catch(() => { S.micDenied = true; toast('Mic is blocked. You can still listen; allow the mic to sing.'); return null; })
-      : Promise.resolve(null).then(() => { S.micDenied = true; toast('This browser needs https or localhost for the mic'); return null; });
+      // Singing sounds best without the speech filters: noise suppression and auto-gain
+      // distort or cut off voices. Echo cancellation stays on so speakers don't echo back.
+      ? navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false, channelCount: 1, sampleRate: 48000 } })
+        .then(s => { S.local = s; S.micDenied = false; s.getAudioTracks().forEach(t => { t.enabled = false; }); attachMicToPeers(); applyMic(); updateMicLine(); return s; })
+        .catch(err => {
+          S.micDenied = true; S.micError = err?.name || 'error';
+          toast(S.micError === 'NotAllowedError' ? 'Mic is blocked. Allow the mic (lock icon in the address bar), then tap "Try mic again".' : 'No microphone found on this device.');
+          updateMicLine(); return null;
+        })
+      : Promise.resolve(null).then(() => { S.micDenied = true; S.micError = 'https'; toast('Open Mehfil over https (or localhost) to use the mic'); updateMicLine(); return null; });
   }
   return S.micPromise;
+}
+// Asks for the microphone again (after the user allowed it in the browser).
+function retryMic() {
+  S.micPromise = null; S.micDenied = false; S.micError = null;
+  return ensureMic().then(s => { if (s) syncPeers(); return s; });
+}
+// Puts the microphone track on every connection. Each connection has a sender ready from the start,
+// so the mic can be added later without renegotiating.
+function attachMicToPeers() {
+  const track = S.local?.getAudioTracks()[0];
+  if (!track) return;
+  S.peers.forEach(p => { p.tr?.sender.replaceTrack(track).catch(() => {}); });
+}
+function updateMicLine() {
+  const box = $('#micstate'); if (box && S.micDenied) box.innerHTML = `<span class="led"></span>Mic not available. ${S.micError === 'NotAllowedError' ? 'Allow the mic in your browser, then' : ''} <button class="btn btn-line btn-sm" data-act="mic-retry">Try mic again</button>`;
+}
+// Shows how many people you can hear, so problems are visible.
+function updateVoiceStatus() {
+  const el = $('#voice-status'); const v = S.table; if (!el || !v) return;
+  const others = v.members.filter(m => m.token !== S.token && !m.bot);
+  const up = others.filter(m => S.peers.get(m.token)?.pc.connectionState === 'connected').length;
+  el.textContent = others.length ? `Voice: ${up} of ${others.length} connected` : '';
 }
 function applyMic() {
   const v = S.table, track = S.local?.getAudioTracks()[0];
@@ -698,14 +758,31 @@ function syncPeers() {
 }
 function makePeer(tok, initiator) {
   const pc = new RTCPeerConnection({ iceServers: S.ice });
-  if (S.local) S.local.getTracks().forEach(t => pc.addTrack(t, S.local));
-  else pc.addTransceiver('audio', { direction: 'recvonly' });
+  const tr = pc.addTransceiver('audio', { direction: 'sendrecv' });
+  const track = S.local?.getAudioTracks()[0];
+  if (track) tr.sender.replaceTrack(track).catch(() => {});
+  // Higher quality audio for singing: up to 128 kbps (the browser default is much lower).
+  try {
+    const sp = tr.sender.getParameters();
+    sp.encodings = sp.encodings?.length ? sp.encodings : [{}];
+    sp.encodings[0].maxBitrate = 128000;
+    tr.sender.setParameters(sp).catch(() => {});
+  } catch { /* older browsers: keep the default */ }
   const audio = new Audio();
   audio.autoplay = true; audio.playsInline = true;
-  const p = { pc, audio, stream: null, queue: [] };
-  pc.ontrack = e => { p.stream = e.streams[0]; audio.srcObject = p.stream; applyMuting(); audio.play().catch(() => {}); };
+  document.body.appendChild(audio);
+  const p = { pc, tr, audio, stream: null, queue: [] };
+  pc.ontrack = e => {
+    p.stream = e.streams[0] || new MediaStream([e.track]);
+    audio.srcObject = p.stream;
+    applyMuting();
+    audio.play().catch(() => { S.audioBlocked = true; renderTable(); });
+  };
   pc.onicecandidate = e => { if (e.candidate) socket.emit('rtc', { to: tok, data: { candidate: e.candidate } }); };
-  pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') closePeer(tok); };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'failed') closePeer(tok);
+    updateVoiceStatus();
+  };
   S.peers.set(tok, p);
   if (initiator) pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => socket.emit('rtc', { to: tok, data: { sdp: pc.localDescription } })).catch(() => {});
   return p;
@@ -782,8 +859,14 @@ const ACT = {
   hint: () => socket.emit('turn:hint'),
   vote: arg => socket.emit('vote', { vote: arg }),
   quick: arg => socket.emit('chat', { text: arg }),
-  react: arg => socket.emit('react', { emoji: arg }),
-  mic: () => { S.micOn = !S.micOn; ensureMic().then(applyMic); renderAction(); },
+  react: arg => { socket.emit('react', { emoji: arg }); const t = $('#react-tray'); if (t) t.hidden = true; },
+  'react-tray': () => toggleTray(),
+  'mic-dock': () => { const v = S.table; if (v && callModeOf(v)) ACT.mic(); else toast("In turns mode only the singer's mic is on"); },
+  sheet: arg => openSheet(arg),
+  'sheet-close': () => closeSheet(),
+  mic: () => { S.micOn = !S.micOn; ensureMic().then(applyMic); renderAction(); renderDock(); },
+  'mic-retry': () => { retryMic().then(() => { applyMic(); renderTable(); }); },
+  hear: () => { S.audioBlocked = false; S.peers.forEach(p => p.audio.play().catch(() => {})); renderTable(); },
   stage: () => socket.emit('stage:take'),
   'queue-next': () => socket.emit('queue:next'),
   'mic-test': () => micTest(),
@@ -837,6 +920,7 @@ function micTest() {
 }
 
 document.addEventListener('click', e => {
+  if (e.target.matches('[data-sheet-scrim]')) { closeSheet(); return; }
   const scrim = e.target.matches('[data-scrim]') ? e.target : null;
   if (scrim) { if (S.modalDismiss) closeModal(); return; }
   const el = e.target.closest('[data-act]');

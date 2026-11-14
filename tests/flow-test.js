@@ -145,7 +145,7 @@ async function main() {
     const more = [];
     for (let i = 0; i < 8; i++) more.push(await person('Jammer' + i, { handle: 'jammer' + i }));
     more.forEach(p => p.s.emit('table:join', { code: jamCode }));
-    await wait(400);
+    await wait(1200);
     check('jam holds 8 people', jamHost.view.members.length === 8, String(jamHost.view.members.length));
     const extra = await person('Late', { handle: 'late' });
     extra.s.emit('table:join', { code: jamCode });

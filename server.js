@@ -42,7 +42,10 @@ const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Voice relay for phones on mobile data: set ICE_SERVERS on the host as a JSON list of TURN servers.
-const EXTRA_ICE = (() => { try { return JSON.parse(process.env.ICE_SERVERS || '[]'); } catch { return []; } })();
+// Without your own TURN servers, a free public relay is used so voices also work on mobile data.
+// Replace it with your own TURN service (set ICE_SERVERS on the host) before a public launch.
+const DEFAULT_TURN = [{ urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' }];
+const EXTRA_ICE = (() => { try { return process.env.ICE_SERVERS ? JSON.parse(process.env.ICE_SERVERS) : DEFAULT_TURN; } catch { return DEFAULT_TURN; } })();
 app.get('/config', (req, res) => res.json({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, ...EXTRA_ICE] }));
 
 const httpServer = http.createServer(app);
