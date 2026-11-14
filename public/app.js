@@ -174,7 +174,7 @@ socket.on('table', v => {
   S.table = v;
   S.offset = v.now - Date.now();
   // Call-style tables (Sing together, or "Everyone talks") start with the mic on.
-  const callMode = v.type === 'jam' || v.settings.voice === 'call';
+  const callMode = true; // everyone talks, like a call
   if (S.lastCode !== v.code || S.lastCallMode !== callMode) S.micOn = callMode;
   S.lastCode = v.code; S.lastCallMode = callMode;
   show('table');
@@ -383,7 +383,7 @@ function openProfile(token) {
 }
 
 /* ---------- table ---------- */
-const callModeOf = v => v.type === 'jam' || v.settings.voice === 'call';
+const callModeOf = () => true; // everyone talks, like a call
 const turnName = v => v.members.find(m => m.token === v.turn)?.name || '';
 const myMember = v => v.members.find(m => m.token === S.token);
 
@@ -597,13 +597,12 @@ function settingsHtml(v) {
   if (v.type === 'jam') return '<p class="muted">Sing together has no game settings. Everyone talks, and the queue is on the main screen.</p>';
   const s = v.settings;
   if (!v.isHost || v.state === 'playing') {
-    return `<p class="muted">Game: ${esc(v.themeLabel)} · ${s.turnSec}s a turn · ${s.lives} ❤ · ${s.voice === 'call' ? 'everyone talks' : 'take turns'}${s.teams ? ' · teams' : ''}</p>
+    return `<p class="muted">Game: ${esc(v.themeLabel)} · ${s.turnSec}s a turn · ${s.lives} ❤ · everyone talks${s.teams ? ' · teams' : ''}</p>
       <p class="muted">Only the host can change these before a game.</p>`;
   }
   return `<span class="lbl">Theme</span><div class="chips">${THEMES.map(([k, l]) => `<button class="chip ${s.theme === k ? 'on' : ''}" data-act="set" data-arg="theme=${k}">${l}</button>`).join('')}</div>
     <span class="lbl">Time per turn</span><div class="chips">${TURNS.map(t => `<button class="chip ${s.turnSec === t ? 'on' : ''}" data-act="set" data-arg="turnSec=${t}">${t}s</button>`).join('')}</div>
     <span class="lbl">Lives</span><div class="chips">${[1, 2, 3, 4, 5].map(n => `<button class="chip ${s.lives === n ? 'on' : ''}" data-act="set" data-arg="lives=${n}">${n} ❤</button>`).join('')}</div>
-    <span class="lbl">Voice</span><div class="chips"><button class="chip ${s.voice !== 'call' ? 'on' : ''}" data-act="set" data-arg="voice=turns">Take turns</button><button class="chip ${s.voice === 'call' ? 'on' : ''}" data-act="set" data-arg="voice=call">Everyone talks</button></div>
     <span class="lbl">Letters</span><div class="chips">${LANGS.map(([k, l]) => `<button class="chip ${s.lang === k ? 'on' : ''}" data-act="set" data-arg="lang=${k}">${l}</button>`).join('')}</div>
     <label class="switch">Team A vs Team B <input type="checkbox" ${s.teams ? 'checked' : ''} data-act="toggle-teams" aria-label="Teams"></label>
     <p class="muted">Press Start game at the top when everyone is in.</p>`;
@@ -736,8 +735,8 @@ function updateVoiceStatus() {
 function applyMic() {
   const v = S.table, track = S.local?.getAudioTracks()[0];
   if (track && v) {
-    const callMode = v.type === 'jam' || v.settings.voice === 'call';
-    track.enabled = callMode ? S.micOn : (v.state === 'playing' && v.turn === S.token && !v.verifying);
+    const callMode = true; // everyone talks, like a call
+    track.enabled = S.micOn;
   }
   if (S.micTesting && track) track.enabled = true;
 }
@@ -745,7 +744,7 @@ function applyMuting() {
   const v = S.table;
   S.peers.forEach((p, tok) => {
     // Take-turns games: only the singer is heard. Call-style tables: everyone is heard.
-    p.audio.muted = !!v && v.type === 'game' && v.state === 'playing' && v.settings.voice !== 'call' && v.turn !== tok;
+    p.audio.muted = false;
   });
 }
 function syncPeers() {
