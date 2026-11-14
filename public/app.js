@@ -757,11 +757,11 @@ function syncPeers() {
 }
 function makePeer(tok, initiator) {
   const pc = new RTCPeerConnection({ iceServers: S.ice });
-  const tr = pc.addTransceiver('audio', { direction: 'sendrecv' });
-  const track = S.local?.getAudioTracks()[0];
-  if (track) tr.sender.replaceTrack(track).catch(() => {});
+  // Only the person who starts the call adds the audio slot. The other side uses the slot from the offer.
+  const tr = initiator ? pc.addTransceiver('audio', { direction: 'sendrecv' }) : null;
+  if (tr) { const track = S.local?.getAudioTracks()[0]; if (track) tr.sender.replaceTrack(track).catch(() => {}); }
   // Higher quality audio for singing: up to 128 kbps (the browser default is much lower).
-  try {
+  if (tr) try {
     const sp = tr.sender.getParameters();
     sp.encodings = sp.encodings?.length ? sp.encodings : [{}];
     sp.encodings[0].maxBitrate = 128000;
@@ -800,6 +800,8 @@ async function handleRtc(from, data) {
     if (data.sdp) {
       await pc.setRemoteDescription(data.sdp);
       if (data.sdp.type === 'offer') {
+        p.tr = pc.getTransceivers().find(t => t.receiver.track?.kind === 'audio') || null;
+        if (p.tr) { p.tr.direction = 'sendrecv'; const tk = S.local?.getAudioTracks()[0]; if (tk) p.tr.sender.replaceTrack(tk).catch(() => {}); }
         await pc.setLocalDescription(await pc.createAnswer());
         socket.emit('rtc', { to: from, data: { sdp: pc.localDescription } });
       }
