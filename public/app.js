@@ -70,6 +70,27 @@ function hum(seed) {
     }
   } catch { /* no audio */ }
 }
+// A bot "sings" its lyrics by speaking them in a browser voice. Each bot gets its own voice and pitch.
+function speakSong(song, botToken) {
+  const synth = window.speechSynthesis;
+  if (!synth || !window.SpeechSynthesisUtterance) return hum(botToken);
+  const voices = synth.getVoices();
+  const h = [...String(botToken)].reduce((a, c) => a + c.charCodeAt(0), 0);
+  const want = song.lang === 'en' ? ['en-IN', 'en-US', 'en-GB'] : ['hi-IN', 'mr-IN', 'en-IN', 'en-US'];
+  let pool = [];
+  for (const l of want) {
+    pool = voices.filter(v => v.lang.replace('_', '-').toLowerCase().startsWith(l.toLowerCase()));
+    if (pool.length) break;
+  }
+  const voice = pool.length ? pool[h % pool.length] : null;
+  song.lines.forEach(line => {
+    const u = new SpeechSynthesisUtterance(line);
+    if (voice) { u.voice = voice; u.lang = voice.lang; }
+    u.pitch = 0.85 + (h % 5) * 0.1;   // 0.85 to 1.25, so bots sound different
+    u.rate = 0.9;
+    synth.speak(u);
+  });
+}
 // Tanpura drone and a soft dholak beat for between turns.
 function startAmbience() {
   if (S.amb) return;
@@ -409,7 +430,10 @@ function renderTable() {
   if (v.type === 'game' && v.state === 'playing' && key !== S.lastTurnKey) {
     S.lastTurnKey = key;
     if (v.turn === S.token) { chime([523, 659, 784]); navigator.vibrate?.(200); }
-    if (v.botSong && v.members.find(m => m.token === v.turn)?.bot) hum(v.botSong);
+    const botNow = v.members.find(m => m.token === v.turn)?.bot;
+    window.speechSynthesis?.cancel();
+    if (botNow && v.botSing) speakSong(v.botSing, v.turn);
+    else if (v.botSong && botNow) hum(v.botSong);
   }
   if (S.amb) S.amb.master.gain.value = v.turn ? .15 : .5;
   applyMic();

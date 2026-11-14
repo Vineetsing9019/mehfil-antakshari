@@ -8,6 +8,7 @@ const os = require('os');
 const selfsigned = require('selfsigned');
 const { Server } = require('socket.io');
 const { makeBots, SONGS } = require('./bots');
+const { librarySongsFor } = require('./songlib');
 
 const PORT = Number(process.env.PORT) || 5090; // localhost:5090, or the host's port
 const SECURE_PORT = 5443;                      // https for phones on this Wi-Fi (local only)
@@ -212,7 +213,7 @@ function createTable(type, hostToken, settings = {}) {
     settings: { theme: 'classic', turnSec: 60, lives: 3, teams: false, lang: 'en', voice: 'call', ...pick(settings) },
     letter: null, turnIdx: 0, turnEndsAt: null, timer: null, botTimer: null, verifyTimer: null, verifying: null,
     trail: [], chat: [], claps: 0, clapTotals: new Map(), winnerToken: null, winnerTeam: null, crowdFav: null,
-    queue: [], nowPlaying: null, stage: null, botSong: null, createdAt: Date.now(),
+    queue: [], nowPlaying: null, stage: null, botSong: null, botSing: null, createdAt: Date.now(),
   };
   tables.set(t.code, t);
   return t;
@@ -320,7 +321,7 @@ function viewFor(t, token) {
     settings: t.settings, themeLabel: THEMES[t.settings.theme]?.label, themeRule: THEMES[t.settings.theme]?.rule,
     letter: t.letter, deva: t.letter ? DEVA[t.letter] : null,
     turn: t.state === 'playing' ? currentToken(t) : null, turnEndsAt: t.turnEndsAt, now: Date.now(), turnMs: turnMs(t),
-    botSong: t.botSong, members, trail: t.trail.slice(-40),
+    botSong: t.botSong, botSing: t.botSing, members, trail: t.trail.slice(-40),
     chat: t.chat.filter(msg => !(msg.from && blockedEither(token, msg.from))).slice(-80),
     claps: t.claps, teamTotals,
     verifying: v ? { singer: v.token, song: v.song, lastWord: v.lastWord, next: v.next, ends: v.ends,
@@ -364,7 +365,7 @@ function startGame(t) {
 
 function startTurn(t) {
   clearTimeout(t.timer); clearTimeout(t.botTimer); clearTimeout(t.verifyTimer);
-  t.verifying = null; t.botSong = null; t.claps = 0;
+  t.verifying = null; t.botSong = null; t.botSing = null; t.claps = 0;
   const tok = currentToken(t);
   t.turnEndsAt = Date.now() + turnMs(t);
   t.timer = setTimeout(() => loseLife(t, tok, 'ran out of time'), turnMs(t));
@@ -374,11 +375,21 @@ function startTurn(t) {
 
 // A bot chooses a real song for the letter (sometimes it gets stuck), then sings for a few seconds.
 function botTurn(t, id) {
-  const used = new Set(t.trail.filter(x => x.song).map(x => x.song.toLowerCase()));
-  const options = (SONGS[t.letter] || []).filter(s => !used.has(s.toLowerCase()));
-  const song = options.length && Math.random() < 0.9 ? options[Math.floor(Math.random() * options.length)] : null;
+  const used = [...t.trail.filter(x => x.song).map(x => x.song)];
+  // Most of the time the bot sings one of the library songs (its lyrics are spoken aloud by the browser).
+  const libOptions = librarySongsFor(t.letter, used);
+  let song = null, sing = null;
+  if (libOptions.length && Math.random() < 0.6) {
+    sing = libOptions[Math.floor(Math.random() * libOptions.length)];
+    song = sing.title;
+  } else {
+    const usedLower = used.map(s => s.toLowerCase());
+    const options = (SONGS[t.letter] || []).filter(s => !usedLower.includes(s.toLowerCase()));
+    song = options.length && Math.random() < 0.9 ? options[Math.floor(Math.random() * options.length)] : null;
+  }
   t.botSong = song;
-  const ms = song ? 5000 + Math.random() * 6000 : 6000 + Math.random() * 4000;
+  t.botSing = sing ? { id: sing.id, title: sing.title, lang: sing.lang, lines: sing.lines } : null;
+  const ms = sing ? 2000 + sing.lines.length * 2600 : song ? 5000 + Math.random() * 6000 : 6000 + Math.random() * 4000;
   t.botTimer = setTimeout(() => {
     if (t.state !== 'playing' || currentToken(t) !== id || t.verifying) return;
     if (song) {
@@ -475,7 +486,7 @@ function checkOver(t) {
     : alive.length >= 2;
   if (enough && humansAlive > 0) return false;
   clearTimeout(t.timer); clearTimeout(t.botTimer); clearTimeout(t.verifyTimer);
-  t.verifying = null; t.botSong = null;
+  t.verifying = null; t.botSong = null; t.botSing = null;
   t.state = 'over';
   t.turnEndsAt = null;
   if (t.settings.teams) {
