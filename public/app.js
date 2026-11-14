@@ -179,7 +179,7 @@ socket.on('table', v => {
   S.lastCode = v.code; S.lastCallMode = callMode;
   show('table');
   renderTable();
-  ensureMic().then(syncPeers);
+  Promise.all([ensureMic(), S.iceReady]).then(syncPeers);
 });
 socket.on('chat', ({ table, msg }) => {
   if (!S.table || S.table.code !== table) return;
@@ -953,7 +953,7 @@ $('#search')?.addEventListener('input', () => renderLobby());
   const L = $('.lights');
   if (L) L.innerHTML = '<i style="background:var(--gold);box-shadow:0 0 12px var(--gold)"></i><i style="background:var(--pink);box-shadow:0 0 12px var(--pink)"></i><i style="background:var(--teal);box-shadow:0 0 12px var(--teal)"></i><i style="background:var(--saffron);box-shadow:0 0 12px var(--saffron)"></i>'.repeat(Math.max(3, Math.floor(innerWidth / 60)));
 })();
-fetch('/config').then(r => r.json()).then(c => { S.ice = c.iceServers; }).catch(() => {});
+S.iceReady = fetch('/config').then(r => r.json()).then(c => { S.ice = c.iceServers; }).catch(() => {});
 show('join');
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 })();

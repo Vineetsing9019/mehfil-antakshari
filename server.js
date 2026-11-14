@@ -209,7 +209,7 @@ function createTable(type, hostToken, settings = {}) {
   const t = {
     code: newCode(), type, hostToken, members: new Map(), order: [],
     state: type === 'jam' ? 'jam' : 'lobby',
-    settings: { theme: 'classic', turnSec: 60, lives: 3, teams: false, lang: 'en', voice: 'turns', ...pick(settings) },
+    settings: { theme: 'classic', turnSec: 60, lives: 3, teams: false, lang: 'en', voice: 'call', ...pick(settings) },
     letter: null, turnIdx: 0, turnEndsAt: null, timer: null, botTimer: null, verifyTimer: null, verifying: null,
     trail: [], chat: [], claps: 0, clapTotals: new Map(), winnerToken: null, winnerTeam: null, crowdFav: null,
     queue: [], nowPlaying: null, stage: null, botSong: null, createdAt: Date.now(),
