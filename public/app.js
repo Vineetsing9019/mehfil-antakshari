@@ -388,6 +388,8 @@ function leaveLocal() {
   S.table = null;
   S.lastCode = null;
   closeAllPeers();
+  if (S.camOn) camOff(false);
+  syncVideos();
   S.singId++; window.speechSynthesis?.cancel(); S.lyricIdx = -1;
   S.bedOn = false;
   stopAmbience();
@@ -653,6 +655,8 @@ function renderTable() {
   applyMic();
   applyMuting();
   updateVoiceStatus();
+  if (S.camOn && !S.camPending && myMember(v) && !myMember(v).cam) camOff(false);
+  syncVideos();
 }
 
 function renderStage() {
@@ -866,6 +870,12 @@ function renderDock() {
     mic.classList.toggle('on', !!live);
     mic.querySelector('span').textContent = S.micDenied ? 'No mic' : live ? 'Mic on' : callMode ? 'Mic off' : 'Muted';
   }
+  const cam = $('#dock-cam');
+  if (cam) {
+    cam.hidden = !v.settings.private;
+    cam.classList.toggle('on', !!S.camOn);
+    cam.querySelector('span').textContent = S.camOn ? 'Video on' : 'Video';
+  }
   const badge = $('#dock-badge');
   if (badge) { badge.hidden = !S.unread; badge.textContent = S.unread; }
 }
@@ -888,7 +898,7 @@ function membersHtml(v) {
 
 function settingsHtml(v) {
   const s = v.settings;
-  const privacy = (v.isHost ? `<label class="switch">Link only (hide from Open tables) <input type="checkbox" ${s.private ? 'checked' : ''} data-act="toggle-private" aria-label="Link only"></label>` : '')
+  const privacy = (v.isHost ? `<label class="switch">Link only (hide from Open tables) <input type="checkbox" ${s.private ? 'checked' : ''} data-act="toggle-private" aria-label="Link only"></label><p class="muted setnote">${s.private ? '📷 Video is on for this table: tap Video in the bar below (up to 4 cameras).' : '📷 Turn on Link only to use video, so only people you invited can see you.'}</p>` : '')
     + (v.isHost && v.type === 'game' ? `<span class="lbl">AI singers</span><div class="chips">${[['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']].map(([k, l]) => `<button class="chip ${(s.botLevel || 'normal') === k ? 'on' : ''}" data-act="set" data-arg="botLevel=${k}">${l}</button>`).join('')}</div>` : '');
   if (v.type === 'jam') return privacy + '<p class="muted">Sing together has no game settings. Everyone talks, and the queue is on the main screen.</p>';
   if (!v.isHost || v.state === 'playing') {
@@ -1088,11 +1098,15 @@ function makePeer(tok, initiator) {
     sp.encodings[0].maxBitrate = 128000;
     tr.sender.setParameters(sp).catch(() => {});
   } catch { /* older browsers: keep the default */ }
+  // Video slot: empty until someone turns their camera on (link-only tables only).
+  const vtr = initiator ? pc.addTransceiver('video', { direction: 'sendrecv' }) : null;
+  if (vtr) { if (S.camTrack) vtr.sender.replaceTrack(S.camTrack).catch(() => {}); capVideo(vtr); }
   const audio = new Audio();
   audio.autoplay = true; audio.playsInline = true;
   document.body.appendChild(audio);
-  const p = { pc, tr, audio, stream: null, queue: [] };
+  const p = { pc, tr, vtr, audio, stream: null, vstream: null, queue: [] };
   pc.ontrack = e => {
+    if (e.track.kind === 'video') { p.vstream = new MediaStream([e.track]); syncVideos(); return; }
     p.stream = e.streams[0] || new MediaStream([e.track]);
     audio.srcObject = p.stream;
     applyMuting();
@@ -1107,6 +1121,72 @@ function makePeer(tok, initiator) {
   if (initiator) pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => socket.emit('rtc', { to: tok, data: { sdp: pc.localDescription } })).catch(() => {});
   return p;
 }
+// Small, smooth video that phones can carry: about 320x240 at 15 frames a second.
+function capVideo(tr) {
+  try {
+    const sp = tr.sender.getParameters();
+    sp.encodings = sp.encodings?.length ? sp.encodings : [{}];
+    sp.encodings[0].maxBitrate = 300000; sp.encodings[0].maxFramerate = 15;
+    tr.sender.setParameters(sp).catch(() => {});
+  } catch { /* keep the browser default */ }
+}
+async function camOn() {
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 20 }, facingMode: 'user' } });
+    S.camTrack = s.getVideoTracks()[0];
+    S.camStream = new MediaStream([S.camTrack]);
+  } catch { toast('The camera is blocked or missing. Allow it in your browser to use video.'); return; }
+  S.camOn = true; S.camPending = true;
+  S.peers.forEach(p => p.vtr?.sender.replaceTrack(S.camTrack).catch(() => {}));
+  socket.emit('cam', { on: true }, ok => {
+    S.camPending = false;
+    if (ok) toast('Your camera is on. Only people at this table can see you.');
+    else camOff(false);
+  });
+  syncVideos(); renderDock();
+}
+function camOff(tell = true) {
+  S.camTrack?.stop();
+  S.camTrack = null; S.camStream = null; S.camOn = false; S.camPending = false;
+  S.peers.forEach(p => p.vtr?.sender.replaceTrack(null).catch(() => {}));
+  if (tell) socket.emit('cam', { on: false });
+  syncVideos(); renderDock();
+}
+// Video tiles above the stage, one per person whose camera is on. Tiles are kept (not redrawn) so video never flickers.
+function syncVideos() {
+  const box = $('#vids'); if (!box) return;
+  const v = S.table;
+  const on = v ? v.members.filter(m => m.cam && !m.bot) : [];
+  box.hidden = !on.length;
+  box.dataset.n = on.length;
+  const want = new Set(on.map(m => m.token));
+  $$('.vtile', box).forEach(el => { if (!want.has(el.dataset.tok)) el.remove(); });
+  on.forEach(m => {
+    let el = [...box.children].find(x => x.dataset.tok === m.token);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'vtile' + (m.token === S.token ? ' me' : '');
+      el.dataset.tok = m.token;
+      el.innerHTML = `<video autoplay playsinline muted></video><span>${esc(m.token === S.token ? 'You' : m.name.split(' ')[0])}</span>`;
+      box.appendChild(el);
+    }
+    const stream = m.token === S.token ? S.camStream : S.peers.get(m.token)?.vstream;
+    const vid = el.querySelector('video');
+    if (stream && vid.srcObject !== stream) { vid.srcObject = stream; vid.play().catch(() => {}); }
+    el.classList.toggle('waiting', !stream);
+  });
+}
+// Read-only call numbers for checking calls (used by the end-to-end tests; harmless to anyone else).
+window.mehfilCallStats = async () => Promise.all([...S.peers].map(async ([tok, p]) => {
+  const out = { peer: S.table?.members.find(m => m.token === tok)?.name || tok, state: p.pc.connectionState, audioIn: 0, videoSentBytes: 0, videoFramesDecoded: 0,
+    slots: p.pc.getTransceivers().map(t => `${t.mid}:${t.receiver.track?.kind}:${t.direction}/${t.currentDirection}:${t.sender.track ? 'track' : 'none'}${t === p.vtr ? ':vtr' : ''}`).join(' ') };
+  (await p.pc.getStats()).forEach(r => {
+    if (r.type === 'inbound-rtp' && r.kind === 'audio') out.audioIn += r.bytesReceived || 0;
+    if (r.type === 'outbound-rtp' && r.kind === 'video') out.videoSentBytes += r.bytesSent || 0;
+    if (r.type === 'inbound-rtp' && r.kind === 'video') out.videoFramesDecoded += r.framesDecoded || 0;
+  });
+  return out;
+}));
 function closePeer(tok) {
   const p = S.peers.get(tok); if (!p) return;
   try { p.pc.close(); } catch { /* already closed */ }
@@ -1123,6 +1203,8 @@ async function handleRtc(from, data) {
       if (data.sdp.type === 'offer') {
         p.tr = pc.getTransceivers().find(t => t.receiver.track?.kind === 'audio') || null;
         if (p.tr) { p.tr.direction = 'sendrecv'; const tk = S.local?.getAudioTracks()[0]; if (tk) p.tr.sender.replaceTrack(tk).catch(() => {}); }
+        p.vtr = pc.getTransceivers().find(t => t.receiver.track?.kind === 'video') || null;
+        if (p.vtr) { p.vtr.direction = 'sendrecv'; if (S.camTrack) p.vtr.sender.replaceTrack(S.camTrack).catch(() => {}); capVideo(p.vtr); }
         await pc.setLocalDescription(await pc.createAnswer());
         socket.emit('rtc', { to: from, data: { sdp: pc.localDescription } });
       }
@@ -1157,6 +1239,7 @@ const ACT = {
     <div class="az">${'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(l => `<button class="chip ${S.pickedLetter === l ? 'on' : ''}" data-act="set-letter" data-arg="${l}">${l}</button>`).join('')}</div>
     <div class="row"><button class="btn btn-text btn-sm" data-act="set-letter" data-arg="">Use the song's last letter</button></div>`),
   'set-letter': arg => { S.pickedLetter = arg || null; closeModal(); renderAction(); $('#in-song')?.focus({ preventScroll: true }); },
+  cam: () => { if (S.camOn) camOff(); else camOn(); },
   'skip-bot': () => { S.singId++; window.speechSynthesis?.cancel(); musicBed(false); socket.emit('turn:skipbot'); },
   rematch: () => { socket.emit('rematch'); closeModal(); },
   daily: () => socket.emit('table:quick', { daily: true }),

@@ -28,6 +28,10 @@ sounds like a group phone call. The server only passes the setup messages betwee
 - Singing sounds better without speech filters: noise suppression and auto-gain are off, echo cancellation stays on,
   and the audio quality is raised to 128 kbps.
 - On mobile data, phones often can't reach each other directly, so a relay server (TURN) is used.
+- **Video** uses a second slot next to the audio slot, set up with the call, so turning a camera on or off never
+  disturbs the voice. Video is small and smooth for phones (about 320x240, 15 frames a second, 300 kbps).
+- **Video safety rules are enforced by the server**, not just the page: cameras start off, are refused at open tables,
+  are limited to 4 per table, and all turn off if the host makes the table public.
 
 ## 3. AI singers
 
@@ -64,10 +68,10 @@ the first screen is ready in **about 0.8 s on a first visit and 0.4 s on later v
 
 ## 6. How it is tested
 
-- **Server checks** (`npm test`, 72 checks): the test starts its own server on a spare port with throwaway data,
+- **Server checks** (`npm test`, 78 checks): the test starts its own server on a spare port with throwaway data,
   connects several fake players and plays real flows: joining by link, votes, lives, AI singers, skip,
   invites during a game, link-only tables, the bad-word filter, badges, the daily challenge, the QR code.
-- **Browser checks** (`npm run e2e`, about 95 checks): headless Chrome at phone size, with a fake microphone.
+- **Browser checks** (`npm run e2e`, 107 checks): headless Chrome at phone size, with a fake microphone.
   They check what a person sees: each screen fits the phone, there is exactly one main button per screen,
   nothing scrolls sideways, the karaoke line lights up, leaving stops the AI singer's voice, sharing makes a picture,
   and there are no page errors.
@@ -84,6 +88,7 @@ the first screen is ready in **about 0.8 s on a first visit and 0.4 s on later v
 | Timer ring froze | A code patch turned `$$(` into `$(` (JavaScript's `replace()` treats `$$` specially), so the seat-glow code crashed every frame | Found by the browser checks; fixed, and patches now use `split/join` |
 | App crashed when opened offline | The live-connection library wasn't saved for offline use | It is saved now, and the app runs with a stand-in until the connection is back |
 | Home grew longer than the screen | Every open table and online friend added a box | One row of singers, one open table plus "See all" |
+| Video tiles showed but nothing was sent | Headless Chrome's fake camera ends at once, so the test could not tell | A read-only call-statistics helper counts video bytes sent and frames decoded; the test uses an animated canvas as the camera and proves video flows both ways |
 | Page error on fast screen changes | A second screen change cancels the first cross-fade | Cancelled fades are ignored; the screen still changes |
 
 ## 8. What's next

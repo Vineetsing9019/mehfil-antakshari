@@ -144,3 +144,5 @@ Status: **Done** = built and checked in the browser (phone size) and by the test
 
 | 76 | Invite by name from inside the table (Singers sheet, and "Invite by name" in the waiting room); works during a game too (friend listens, sings next round). | Friends can bring friends without leaving. | Done |
 | 77 | Leaving a table stops the AI singer's voice and music at once. | They kept singing after you left. | Done |
+| 78 | Video calling: camera off by default, link-only tables only, at most 4 cameras, all off if the table goes public. | Seeing each other makes it a real mehfil; the rules keep strangers out. | Done |
+| 79 | Mehfil logo, first-screen demo, screen cross-fades, result picture, A to Z next-letter picker, Pass always visible. | First impression and sharing. | Done |

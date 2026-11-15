@@ -528,3 +528,15 @@ details.about p{text-align:left;margin-top:8px}
 .story small .aib{display:inline-grid;vertical-align:1px}
 .row-title .muted{margin-left:6px}
 .badgepop{top:auto;bottom:calc(104px + env(safe-area-inset-bottom))}
+
+/* video tiles above the stage (link-only tables; cameras are off by default) */
+.vids{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 10px}
+.vids[data-n="1"]{grid-template-columns:minmax(0,220px);justify-content:center}
+.vtile{position:relative;aspect-ratio:4/3;border-radius:16px;overflow:hidden;background:#1b0830;border:1px solid rgba(46,230,197,.35)}
+.vtile video{width:100%;height:100%;object-fit:cover;display:block}
+.vtile.me video{transform:scaleX(-1)}
+.vtile span{position:absolute;left:8px;bottom:6px;padding:2px 9px;border-radius:999px;background:rgba(0,0,0,.55);font-size:12px;font-weight:600}
+.vtile.waiting::after{content:"Connecting…";position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:13px}
+.setnote{margin:-6px 0 12px}
+/* six buttons in the bar when video is available */
+.dock:has(#dock-cam:not([hidden])) .dk{min-width:56px;padding:6px 4px}

@@ -20,6 +20,7 @@ const INVITE_MS = 20000;
 const VOTE_MS = 6000;
 const HINT_COST = 5;
 const GAME_MAX = 6, JAM_MAX = 8, LISTENER_MAX = 10;
+const CAM_MAX = 4; // video: at most this many cameras on at one table
 const START_LETTERS = 'ABCDEGHJKMNPRST'.split('');
 const REACTIONS = ['👏', '🔥', '🎶', '😂', '❤️', '🙌', '🥹', '🤩'];
 const QUICK_CHAT = ['Wah wah! 👏', 'Ek aur! 🎶', 'Sur perfect 🎤', 'Haha 😂', 'Bahut khoob 🙌'];
@@ -358,7 +359,7 @@ function viewFor(t, token) {
     return { token: m.token, name: pub.name || 'Singer', handle: pub.handle || '', photo: pub.photo || null,
       defaultSeed: pub.defaultSeed, bot: !!pub.bot, online: m.online, role: m.role, lives: m.lives, score: m.score,
       team: m.team, passes: personOf(m.token)?.passes || 0, claps: t.clapTotals.get(m.token) || 0,
-      isHost: m.token === t.hostToken, isStage: t.stage === m.token, followed: (people.get(token)?.follows || []).includes(m.token) };
+      isHost: m.token === t.hostToken, isStage: t.stage === m.token, cam: !!m.cam, followed: (people.get(token)?.follows || []).includes(m.token) };
   });
   const v = t.verifying;
   const teamTotals = t.settings.teams ? { A: 0, B: 0 } : null;
@@ -748,6 +749,7 @@ io.on('connection', socket => {
   socket.on('table:settings', (p = {}) => {
     const t = myTable();
     if (!t || t.hostToken !== token) return;
+    if (typeof p.settings?.private === 'boolean' && !p.settings.private) t.members.forEach(m => { m.cam = false; });
     if (typeof p.settings?.private === 'boolean' && (t.type === 'jam' || t.state === 'playing')) {
       t.settings.private = p.settings.private;
       pushTable(t); pushLobby();
@@ -808,6 +810,19 @@ io.on('connection', socket => {
     addChat(t, null, `${name} wants a rematch! 🔁`);
     emitTo(t.hostToken, 'toast', `🔁 ${name} wants a rematch. Press Play again!`);
     toast('Asked the host for a rematch');
+  });
+
+  // Video: off by default, only at link-only tables (never with strangers), at most CAM_MAX cameras.
+  socket.on('cam', (p = {}, ack) => {
+    const t = myTable(), m = t && memberOf(t, token);
+    const answer = ok => { if (typeof ack === 'function') ack(ok); };
+    if (!m) return answer(false);
+    if (!p.on) { m.cam = false; pushTable(t); return answer(true); }
+    if (!t.settings.private) { toast('Video works at link-only tables. Turn on "Link only" in Settings first.'); return answer(false); }
+    if (!m.cam && [...t.members.values()].filter(x => x.cam).length >= CAM_MAX) { toast(`Up to ${CAM_MAX} people can be on video`); return answer(false); }
+    m.cam = true;
+    pushTable(t);
+    answer(true);
   });
 
   socket.on('turn:pass', () => {

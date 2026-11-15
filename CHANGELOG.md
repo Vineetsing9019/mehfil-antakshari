@@ -26,6 +26,9 @@ Newest first. Every change is also in the [commit history](https://github.com/Vi
 - Soft tanpura under their voice; the host can Skip; Easy / Normal / Hard levels; they cheer good songs in chat.
 - Leaving a table stops their voice at once.
 
+**Video calling**
+- Turn your camera on at a link-only table and see each other above the stage. Cameras are off by default, never shown at open tables (strangers), and at most 4 at a table. Making a table public turns every camera off.
+
 **Friends and safety**
 - Invite by name from inside a table, even mid-game (the friend listens and sings next round).
 - Tables can be link-only. Mute one person, only for yourself. Tap a name in chat to block or report.
@@ -36,7 +39,7 @@ Newest first. Every change is also in the [commit history](https://github.com/Vi
 - First screen in about 0.8 s on a first visit and 0.4 s after that (simulated 4G, phone-speed processor).
 - Files are compressed, fonts don't hold up the page, and the app opens from a saved copy on later visits.
 - Works offline: the app opens and says plainly that it will reconnect.
-- 72 server checks and about 95 browser checks, all passing.
+- 78 server checks and 107 browser checks (including a two-person video call), all passing.
 
 ## 14 November 2026
 

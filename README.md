@@ -25,7 +25,7 @@ own songs, lyrics lighting up line by line.
 ## What it does
 
 - **Play in seconds.** First visit asks only for a name. Play now starts a game with AI singers at once.
-- **Play with friends.** Share a table link on WhatsApp (or a QR code in the same room). Everyone talks like a call (WebRTC).
+- **Play with friends.** Share a table link on WhatsApp (or a QR code in the same room). Everyone talks like a call, and can turn on video at link-only tables (WebRTC).
 - **Fair and fun.** The table votes on every song. Lives, points, a fast-answer bonus, hints, teams, themes (90s, actor, tune), Hindi and Marathi letters.
 - **AI singers.** 20 singers with their own voices sing 101 original songs (verse and chorus), clearly marked AI. Easy, Normal or Hard.
 - **Your turn is easy.** Type or say the song name; the next letter is worked out for you, or pick any letter A to Z.
@@ -40,16 +40,16 @@ What changed and when: [CHANGELOG.md](CHANGELOG.md). How it works inside, and th
 | Part | What |
 |------|------|
 | Server | Node.js, Express, Socket.IO (real-time game state), compression, qrcode |
-| Voice | WebRTC peer-to-peer audio between players, STUN/TURN for mobile data |
+| Voice and video | WebRTC peer-to-peer audio and video between players, STUN/TURN for mobile data |
 | Browser app | Plain JavaScript, HTML and CSS (no framework), Web Audio, Web Speech (AI voices and "say the song"), Canvas (result picture), View Transitions |
 | App features | Service worker (instant reopen and offline), web app manifest (install on phones) |
-| Tests | 72 server acceptance checks (`npm test`), about 95 end-to-end checks in headless Chrome with Puppeteer (`npm run e2e`) |
+| Tests | 78 server acceptance checks (`npm test`), 107 end-to-end checks in headless Chrome with Puppeteer (`npm run e2e`), including a two-person video call |
 
 ```mermaid
 flowchart LR
   P1[Phone: app.js] -- Socket.IO --> S[Node.js server<br>game rules, votes, AI singers]
   P2[Friend's phone] -- Socket.IO --> S
-  P1 <-. WebRTC voice .-> P2
+  P1 <-. WebRTC voice and video .-> P2
   S --> D[(data.json<br>profiles, scores)]
   S --> L[songlib.js + chorus.js<br>101 original songs]
 ```
@@ -59,7 +59,7 @@ flowchart LR
 ```bash
 npm install
 npm start          # http://localhost:5090 (and https on your Wi-Fi address, port 5443, for phones)
-npm test           # 72 server checks
+npm test           # 78 server checks
 npm run e2e        # end-to-end checks in headless Chrome (start the server first)
 ```
 

@@ -349,7 +349,29 @@ async function main() {
     const badQr = await getText('/qr/..%2F.svg');
     check('bad QR codes are refused', badQr.status === 404);
 
-    for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G, Q, R, Lk, Ob, Bw, jamH, Dy, Fr, Hs, Gs]) p.s.close();
+    console.log('\n12. Video: off by default, link-only tables, at most 4 cameras');
+    const camOn = st => new Promise(res => st.s.emit('cam', { on: true }, ok => res(ok)));
+    const V1 = await person('Vani', { handle: 'vani' });
+    V1.s.emit('table:create', { type: 'jam' });
+    await wait(300);
+    check('cameras are off when you join', V1.view.members.every(m => !m.cam));
+    check('video is refused at an open table (strangers could see you)', (await camOn(V1)) === false && V1.toasts.some(t => t.includes('link-only')));
+    V1.s.emit('table:settings', { settings: { private: true } });
+    await wait(250);
+    check('video works at a link-only table', (await camOn(V1)) === true);
+    await wait(250);
+    check('everyone at the table sees whose camera is on', V1.view.members.find(m => m.token === V1.token)?.cam === true);
+    const vs = [];
+    for (const n of ['Vasu', 'Vidhi', 'Veer', 'Vikas']) { const p = await person(n, { handle: n.toLowerCase() + 'v' }); p.s.emit('table:join', { code: V1.view.code }); vs.push(p); }
+    await wait(400);
+    const okCount = [];
+    for (const p of vs) okCount.push(await camOn(p));
+    check('at most 4 cameras at a table', okCount.filter(Boolean).length === 3 && okCount[3] === false && vs[3].toasts.some(t => t.includes('Up to 4')), okCount.join(','));
+    V1.s.emit('table:settings', { settings: { private: false } });
+    await wait(300);
+    check('making the table public turns every camera off', V1.view.members.every(m => !m.cam));
+
+    for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G, Q, R, Lk, Ob, Bw, jamH, Dy, Fr, Hs, Gs, V1, ...vs]) p.s.close();
   } catch (err) {
     failed++;
     console.log('  ✗ test crashed:', err.message);
