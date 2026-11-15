@@ -4,6 +4,9 @@ Newest first. Every change is also in the [commit history](https://github.com/Vi
 
 ## 15 November 2026 (late night)
 
+- **New versions show up at once.** Before, the first visit after a deploy showed the copy saved on the phone. Now the app notices a newer version and refreshes itself on home, or right after you leave a table (never in the middle of a song).
+- 79 server checks and 121 browser checks (including a simulated deploy), all passing.
+
 - **Video at every table.** Anyone can turn their camera on (still off by default, at most 4 cameras). At an open table you are asked first, because anyone who joins can see you; at link-only tables it turns on straight away.
 
 ## 15 November 2026 (night)

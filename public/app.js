@@ -397,6 +397,7 @@ function showLobby() {
   loadBoard();
 }
 function leaveLocal() {
+  if (S.updateReady) { location.reload(); return; } // a newer Mehfil is waiting
   S.table = null;
   S.lastCode = null;
   closeAllPeers();
@@ -1555,5 +1556,15 @@ document.addEventListener('keydown', e => {
 });
 if (firstVisit || !cached) showJoin();
 else { S.me = cached.me; S.named = true; S.lobby = { people: cached.ai || [], tables: [] }; renderMe(); showLobby(); }
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+  // A newer Mehfil was found: reload now on home, or as soon as you leave the table.
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data !== 'mehfil-updated' || S.updateReady) return;
+    S.updateReady = true;
+    const typing = !!$('#form-join [data-f=name]')?.value;
+    if (!S.table && !typing) location.reload();
+    else toast('Mehfil was updated. It will refresh when you leave this table.');
+  });
+}
 })();

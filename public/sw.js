@@ -29,7 +29,17 @@ self.addEventListener('fetch', e => {
   if (data) { e.respondWith(fresh.catch(() => caches.match(req))); return; }
   if (req.mode === 'navigate' || APP_FILE.test(url.pathname)) {
     e.respondWith(caches.match(key).then(hit => {
-      if (hit) { e.waitUntil(fresh.catch(() => {})); return hit; }
+      if (hit) {
+        // Refresh the saved copy in the background; if the page or the app script changed, tell the open pages.
+        const key2 = url.pathname === '/' || req.mode === 'navigate' || url.pathname === '/app.js';
+        e.waitUntil(fresh.then(res => {
+          const was = hit.headers.get('etag'), now = res.headers.get('etag');
+          if (key2 && res.ok && was && now && was !== now) {
+            return self.clients.matchAll().then(list => list.forEach(c => c.postMessage('mehfil-updated')));
+          }
+        }).catch(() => {}));
+        return hit;
+      }
       return fresh.catch(() => caches.match('/'));
     }));
     return;
