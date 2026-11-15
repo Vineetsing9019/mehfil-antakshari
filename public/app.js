@@ -200,7 +200,13 @@ function av(p, extra = '') {
 }
 
 /* ---------- socket ---------- */
-const socket = io({ transports: ['websocket', 'polling'] });
+// Opened with no internet, the live-connection library may not load: use a stand-in so the page still works.
+const socket = typeof io === 'function' ? io({ transports: ['websocket', 'polling'] }) : { on() {}, emit() {}, connected: false };
+if (!navigator.onLine || typeof io !== 'function') {
+  $('#netbar').textContent = "You're offline. Mehfil will reconnect when you're back.";
+  $('#netbar').hidden = false;
+}
+if (typeof io !== 'function') window.addEventListener('online', () => location.reload());
 socket.on('connect', () => { $('#netbar').hidden = true; socket.emit('hello', { token: S.token }); });
 socket.on('disconnect', () => { $('#netbar').hidden = false; });
 socket.on('me', m => {
@@ -304,7 +310,7 @@ function personCard(p) {
     ? `<button class="btn btn-line btn-sm" data-act="req" data-arg="${esc(p.token)}">Invite</button>`
     : `<span class="pstate">${S.sent.has(p.token) ? 'Invited' : 'Busy'}</span>`;
   return `<div class="icard" data-act="profile" data-arg="${esc(p.token)}">${av(p)}
-    <div class="who"><div class="nm">${esc(p.name)}${p.bot ? '<span class="aib">AI</span>' : p.verified ? '<span class="tick">✓</span>' : ''}</div>
+    <div class="who"><div class="nm">${esc(p.name)}${p.bot ? '<span class="aib">AI</span>' : p.verified ? '<span class="tick">✓</span>' : ''}${p.followed ? '<span class="fol">★ Following</span>' : ''}</div>
     <div class="hd">${p.bot ? esc(p.bio || 'AI singer') : '@' + esc(p.handle) + (p.city ? ' · ' + esc(p.city) : '')}</div>
     ${p.bot ? '' : `<div class="st ${p.status === 'free' ? '' : 'busy'}">${statusText(p)}</div>`}</div>
     <div class="col">${btn}</div></div>`;
@@ -312,10 +318,11 @@ function personCard(p) {
 function renderLobby() {
   if (S.table) return;
   const first = (S.me?.name || '').split(' ')[0];
-  $('#hello').textContent = first ? `Namaste, ${first} 👋` : '';
+  const streak = S.me?.streak || 0;
+  $('#hello').innerHTML = first ? esc(`Namaste, ${first} 👋`) + (streak >= 2 ? ` <span class="streak">🔥 ${streak} days in a row</span>` : '') : '';
   // Open tables: only shown when there are some.
   $('#tables-card').hidden = !S.lobby.tables.length;
-  $('#lobby-tables').innerHTML = S.lobby.tables.map(t => `<div class="tcard"><div><b>${t.type === 'jam' ? '🎶 Sing together' : '🎤 Antakshari'}</b><small>Host: ${esc(t.host)} · ${t.count}/${t.max}${t.theme ? ' · ' + esc(t.theme) : ''}${t.state === 'playing' ? ' · game on, join to listen' : ''}</small></div><button class="btn btn-line btn-sm" data-act="join-tap" data-arg="${esc(t.code)}">Join</button></div>`).join('');
+  $('#lobby-tables').innerHTML = S.lobby.tables.map(t => `<div class="tcard"><div><b>${t.type === 'jam' ? '🎶 Sing together' : '🎤 Antakshari'}</b><small>Host: ${esc(t.host)} · ${t.count}/${t.max}${t.theme ? ' · ' + esc(t.theme) : ''}${t.lang ? ' · ' + esc(t.lang) : ''}${t.state === 'playing' ? ' · game on, join to listen' : ''}</small></div><button class="btn btn-line btn-sm" data-act="join-tap" data-arg="${esc(t.code)}">Join</button></div>`).join('');
   // Real people and AI singers are always shown apart.
   const humans = S.lobby.people.filter(p => !p.bot), ais = S.lobby.people.filter(p => p.bot);
   $('#friends-card').hidden = !humans.length;
@@ -334,7 +341,7 @@ function renderLobby() {
 }
 function renderBoard() {
   $('#board').innerHTML = S.board.length
-    ? S.board.map((r, i) => `<li><span>${i + 1}.</span><b>${esc(r.name)}</b><span class="muted">@${esc(r.handle)}</span><b>${r.points}</b></li>`).join('')
+    ? S.board.map((r, i) => `<li class="${i === 0 ? 'top' : ''}"><span>${i === 0 ? '👑' : i + 1 + '.'}</span><b>${esc(r.name)}</b><span class="muted">@${esc(r.handle)}</span><b>${r.points}</b></li>`).join('')
     : '<li class="board-empty">No scores yet this week.<br>Win a song to be first on the board.</li>';
 }
 
@@ -544,13 +551,13 @@ function renderStage() {
     const out = v.type === 'game' && v.state === 'playing' && m.role === 'singer' && m.lives <= 0;
     const hearts = v.type === 'game' ? `<div class="hearts">${'❤'.repeat(Math.max(0, m.lives))}<span style="opacity:.25">${'❤'.repeat(Math.max(0, v.settings.lives - m.lives))}</span></div>` : '';
     const onStage = v.type === 'jam' && m.isStage;
-    return `<div class="seat ${isTurn ? 'turn' : ''} ${out ? 'out' : ''}" style="left:${x}%;top:${y}%" title="${esc(m.name)}">
+    return `<div class="seat ${isTurn ? 'turn' : ''} ${out ? 'out' : ''}" style="left:${x}%;top:${y}%" title="${esc(m.name)}"${m.bot ? '' : ` data-tok="${esc(m.token)}"`}>
       <div class="seatav">${av(m)}${m.isHost ? '<span class="crown">👑</span>' : ''}${isTurn || onStage ? '<span class="micb">🎤</span>' : ''}</div>
       <div class="nm">${m.bot ? '<span class="aib">AI</span>' : ''}${esc(m.name.split(' ')[0])}${m.role === 'listener' ? ' · listening' : ''}</div>${hearts}
       ${v.type === 'game' ? `<div class="meta">${m.score} pts${teams && m.team ? ' · ' + m.team : ''}</div>` : ''}</div>`;
   }).join('');
   const verify = v.verifying ? `<div class="verify">
-      <p>Did <b>${esc(v.members.find(m => m.token === v.verifying.singer)?.name || 'the singer')}</b> sing <b>“${esc(v.verifying.song)}”</b>? Next letter: <b>${esc(v.verifying.next)}</b></p>
+      <p>${voteQuestion(v)} Next letter: <b>${esc(v.verifying.next)}</b></p>
       ${v.verifying.canVote && !v.verifying.myVote ? `<div class="row"><button class="btn btn-line btn-sm" data-act="vote" data-arg="up">👍 Yes</button><button class="btn btn-line btn-sm" data-act="vote" data-arg="down">👎 No</button></div>` : `<p class="muted">${v.verifying.canVote ? 'Thanks, your vote is in' : 'Waiting for the table to vote…'}</p>`}
       <div class="counts">👍 ${v.verifying.up} · 👎 ${v.verifying.down}</div></div>` : '';
   let center;
@@ -558,8 +565,9 @@ function renderStage() {
     center = `<div><div class="letterlabel">Sing together</div><div class="letter" style="font-size:44px">🎶</div>
       <div class="secs">${v.stage ? `On stage: ${esc(v.members.find(m => m.token === v.stage)?.name || '')}` : 'Take the stage to lead a song'}</div></div>`;
   } else if (v.state === 'playing') {
+    const dv = v.settings.lang !== 'en' && v.deva;
     center = `<div><div class="letterlabel">Start with</div>
-      <div class="letter">${esc(v.letter)}</div><div class="secs">${esc(v.deva || '')}</div>
+      <div class="letter">${esc(dv ? v.deva : v.letter)}</div><div class="secs">${esc(dv ? v.letter : (v.deva || ''))}</div>
       <div class="secs" id="secs"></div>
       <div class="eq" id="eq">${'<i></i>'.repeat(16)}</div>
       <div class="secs">${v.turn === S.token ? 'Your turn' : esc(turnName(v).split(' ')[0]) + ' is singing'}</div>
@@ -580,6 +588,23 @@ function renderStage() {
     : v.state === 'playing' ? lastSongLine(v) : '';
   $('#t-stage').innerHTML = `<div class="stage" id="stage"><div class="rug"></div>${ring}<div class="center">${center}</div>${seats}${verify}</div>${lyric}${teamLine}${crowd}`;
   if (v.state === 'playing' && v.type === 'game') tickOnce();
+}
+// The vote question follows the game's theme, so the table judges the right thing.
+function voteQuestion(v) {
+  const who = `<b>${esc(v.members.find(m => m.token === v.verifying.singer)?.name.split(' ')[0] || 'the singer')}</b>`;
+  const song = `<b>“${esc(v.verifying.song)}”</b>`;
+  if (v.settings.theme === 'decade') return `Did ${who} sing ${song}, and is it from the 90s?`;
+  if (v.settings.theme === 'actor') return `Did ${who} sing ${song}, a song of the actor they named?`;
+  if (v.settings.theme === 'dhun') return `Did ${who} get the tune of ${song} right?`;
+  return `Did ${who} sing ${song}?`;
+}
+// The line under "Your turn": the letter in the table's script, and a short how-to the first time.
+function turnLead(v) {
+  const dv = v.settings.lang !== 'en' && v.deva;
+  const chip = `<span class="chipletter">${esc(dv ? v.deva : v.letter)}</span> ${esc(dv ? '(type ' + v.letter + ')' : v.deva || '')}`;
+  const rule = v.settings.theme !== 'classic' ? ` ${esc(v.themeRule || '')}` : '';
+  if (store.get('ak-tut')) return `Sing a song starting with ${chip}.${rule}`;
+  return `First time? Sing out loud any song starting with ${chip}, then type its name and press Done. Its last word sets the next letter.${rule}`;
 }
 // "Last: song by name" under the letter, so the next singer has context.
 function lastSongLine(v) {
@@ -646,7 +671,7 @@ function renderAction() {
       box.classList.add('yourturn');
       const hint = S.hints && S.hints.letter === v.letter ? `<div class="hints">${S.hints.titles.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : '';
       box.innerHTML = `<div class="act-title">Your turn 🎤</div>
-        <p class="lead">Sing a song starting with <span class="chipletter">${esc(v.letter)}</span> ${esc(v.deva || '')}${v.settings.theme !== 'classic' ? '. ' + esc(v.themeRule || '') : ''}</p>
+        <p class="lead">${turnLead(v)}</p>
         <input class="song-in" id="in-song" maxlength="80" placeholder="Song you sang, starting with ${esc(v.letter)}" autocomplete="off" enterkeyhint="done" value="${esc(keep.song)}">
         <label class="lastword"><span>Last word you sang</span>
           <input class="song-in" id="in-last" maxlength="30" placeholder="Filled from the title" autocomplete="off" enterkeyhint="done" value="${esc(keep.last)}"></label>
@@ -748,13 +773,14 @@ function membersHtml(v) {
 }
 
 function settingsHtml(v) {
-  if (v.type === 'jam') return '<p class="muted">Sing together has no game settings. Everyone talks, and the queue is on the main screen.</p>';
   const s = v.settings;
+  const privacy = v.isHost ? `<label class="switch">Link only (hide from Open tables) <input type="checkbox" ${s.private ? 'checked' : ''} data-act="toggle-private" aria-label="Link only"></label>` : '';
+  if (v.type === 'jam') return privacy + '<p class="muted">Sing together has no game settings. Everyone talks, and the queue is on the main screen.</p>';
   if (!v.isHost || v.state === 'playing') {
-    return `<p class="muted">Game: ${esc(v.themeLabel)} · ${s.turnSec}s a turn · ${s.lives} ❤ · everyone talks${s.teams ? ' · teams' : ''}</p>
+    return privacy + `<p class="muted">Game: ${esc(v.themeLabel)} · ${s.turnSec}s a turn · ${s.lives} ❤ · everyone talks${s.teams ? ' · teams' : ''}</p>
       <p class="muted">Only the host can change these before a game.</p>`;
   }
-  return `<span class="lbl">Theme</span><div class="chips">${THEMES.map(([k, l]) => `<button class="chip ${s.theme === k ? 'on' : ''}" data-act="set" data-arg="theme=${k}">${l}</button>`).join('')}</div>
+  return privacy + `<span class="lbl">Theme</span><div class="chips">${THEMES.map(([k, l]) => `<button class="chip ${s.theme === k ? 'on' : ''}" data-act="set" data-arg="theme=${k}">${l}</button>`).join('')}</div>
     <span class="lbl">Time per turn</span><div class="chips">${TURNS.map(t => `<button class="chip ${s.turnSec === t ? 'on' : ''}" data-act="set" data-arg="turnSec=${t}">${t}s</button>`).join('')}</div>
     <span class="lbl">Lives</span><div class="chips">${[1, 2, 3, 4, 5].map(n => `<button class="chip ${s.lives === n ? 'on' : ''}" data-act="set" data-arg="lives=${n}">${n} ❤</button>`).join('')}</div>
     <span class="lbl">Letters</span><div class="chips">${LANGS.map(([k, l]) => `<button class="chip ${s.lang === k ? 'on' : ''}" data-act="set" data-arg="lang=${k}">${l}</button>`).join('')}</div>
@@ -814,7 +840,7 @@ function renderChatLog() {
   if (!v || !box) return;
   const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
   box.innerHTML = v.chat.length ? v.chat.map(m => m.from
-    ? `<div class="msg"><b>${esc(m.name)}</b>${esc(m.text)}</div>`
+    ? `<div class="msg">${m.from === S.token ? `<b>${esc(m.name)}</b>` : `<b class="who-link" data-act="chat-profile" data-arg="${esc(m.from)}" role="button" tabindex="0">${esc(m.name)}</b>`}${esc(m.text)}</div>`
     : `<div class="msg sys">${esc(m.text)}</div>`).join('') : '<div class="msg sys">Say hello to the table 👋</div>';
   if (atBottom) box.scrollTop = box.scrollHeight;
 }
@@ -981,6 +1007,8 @@ const ACT = {
   'start-game': () => socket.emit('table:create', { type: 'game' }),
   'start-jam': () => socket.emit('table:create', { type: 'jam' }),
   'add-bot': () => socket.emit('table:addbot'),
+  'toggle-private': () => socket.emit('table:settings', { settings: { private: !S.table.settings.private } }),
+  'chat-profile': arg => { closeSheet(); openProfile(arg); },
   'all-ai': () => { S.showAllAI = true; renderLobby(); },
   'show-code': () => { $('#code-form').hidden = false; $('#show-code').hidden = true; $('#code-in').focus(); },
   'join-tap': arg => joinCode(arg),
@@ -1037,6 +1065,7 @@ const ACT = {
   'song-done': () => {
     socket.emit('turn:done', { song: $('#in-song')?.value || '', lastWord: $('#in-last')?.value || '' });
     S.draft = {}; S.lastTouched = false;
+    store.set('ak-tut', 'seen');
   },
   pass: () => socket.emit('turn:pass'),
   hint: () => socket.emit('turn:hint'),
@@ -1131,7 +1160,22 @@ document.addEventListener('submit', e => {
 $('#search')?.addEventListener('input', () => renderLobby());
 
 /* ---------- ambient loop, music preference and boot ---------- */
-(function tick() { tickOnce(); requestAnimationFrame(tick); })();
+// Each person's seat glows teal with their voice, so you can see who is talking.
+function seatLevels() {
+  if (!S.table) return;
+  $$('#t-stage .seat[data-tok]').forEach(el => {
+    const an = analyserFor(el.dataset.tok);
+    if (!an) return;
+    an.getByteFrequencyData(an._buf);
+    let peak = 0;
+    for (let i = 1; i < an._buf.length; i++) if (an._buf[i] > peak) peak = an._buf[i];
+    el.style.setProperty('--lvl', Math.min(1, peak / 200).toFixed(2));
+  });
+}
+(function tick() { tickOnce(); seatLevels(); requestAnimationFrame(tick); })();
+// 55. No internet: say so plainly; Socket.IO reconnects by itself when the connection is back.
+window.addEventListener('offline', () => { $('#netbar').textContent = "You're offline. Mehfil will reconnect when you're back."; $('#netbar').hidden = false; });
+window.addEventListener('online', () => { $('#netbar').textContent = 'Reconnecting…'; if (socket.connected) $('#netbar').hidden = true; });
 (() => {
   const L = $('.lights');
   if (L) L.innerHTML = '<i style="background:var(--gold);box-shadow:0 0 12px var(--gold)"></i><i style="background:var(--pink);box-shadow:0 0 12px var(--pink)"></i><i style="background:var(--teal);box-shadow:0 0 12px var(--teal)"></i><i style="background:var(--saffron);box-shadow:0 0 12px var(--saffron)"></i>'.repeat(Math.max(3, Math.floor(innerWidth / 60)));

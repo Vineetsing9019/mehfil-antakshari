@@ -22,7 +22,7 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   .foot{position:absolute;left:80px;bottom:50px;font-size:24px;letter-spacing:.2em;text-transform:uppercase;color:#c3b2d6;z-index:2}
 </style></head><body>
   <div class="ring"></div>
-  <div class="letter">K</div>
+  <div class="letter">V</div>
   <div class="copy">
     <div class="hi">मेहफ़िल</div>
     <h1>Mehfil</h1>

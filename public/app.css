@@ -432,3 +432,12 @@ body.on-table .toasts{bottom:calc(96px + env(safe-area-inset-bottom))}
   body.on-table .wrap{padding-top:30px}
   .btn-xl{font-size:19px}
 }
+
+/* v5: streak, following, crown, chat names, voice glow */
+.streak{display:inline-block;margin-left:6px;padding:2px 9px;border-radius:999px;background:rgba(255,138,31,.16);color:var(--gold);font-size:12px;font-weight:600}
+.fol{display:inline-block;margin-left:6px;font-size:11px;font-weight:600;color:var(--gold)}
+.board-list li.top{background:rgba(255,193,69,.12);border:1px solid rgba(255,193,69,.35)}
+.who-link{cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,193,69,.35);text-underline-offset:3px}
+.who-link:hover{text-decoration-color:var(--gold)}
+/* a seat's ring grows with the person's voice (teal = live) */
+.seat .seatav{border-radius:50%;box-shadow:0 0 0 calc(var(--lvl, 0) * 8px) rgba(46,230,197,.45);transition:box-shadow .08s linear}

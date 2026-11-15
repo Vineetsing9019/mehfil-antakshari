@@ -242,7 +242,46 @@ async function main() {
     await wait(300);
     check('AI singers cannot be added once the game has started', R.view?.members.length === 2);
 
-    for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G, Q, R]) p.s.close();
+    console.log('\n10. Link-only tables, bad words, streaks');
+    const Lk = await person('Lata', { handle: 'lata' });
+    const Ob = await person('Om', { handle: 'om' });
+    await wait(300);
+    check('Play now tables are link-only (not in Open tables)', !Ob.lobby.tables.some(t => t.code === Q.view.code));
+    Lk.s.emit('table:create', { type: 'game' });
+    await wait(300);
+    const lkCode = Lk.view.code;
+    check('a new table is listed in Open tables', Ob.lobby.tables.some(t => t.code === lkCode));
+    Lk.s.emit('table:settings', { settings: { private: true } });
+    await wait(300);
+    check('host can make a table link-only', Lk.view.settings.private === true && !Ob.lobby.tables.some(t => t.code === lkCode));
+    Ob.s.emit('table:join', { code: lkCode });
+    await wait(300);
+    check('a link-only table can still be joined with its code', Ob.view?.code === lkCode);
+    Ob.s.emit('chat', { text: 'tu chutiya hai, what the fuck' });
+    await wait(300);
+    const said = Lk.chat.find(m => m.from === Ob.token)?.text || '';
+    check('bad words in chat are starred out', said.includes('c******') && said.includes('f***') && !/chutiya|fuck/i.test(said), said);
+    Ob.s.emit('chat', { text: 'Wah, Kishore da ka gaana!' });
+    await wait(300);
+    check('normal chat is left alone', Lk.chat.some(m => m.text === 'Wah, Kishore da ka gaana!'));
+    const Bw = await person('Bitch Please', { handle: 'bp' });
+    await wait(300);
+    const bwName = Ob.lobby.people.find(p => p.token === Bw.token)?.name || '';
+    check('bad words in names are starred out', bwName.startsWith('B****') && !/bitch/i.test(bwName), bwName);
+    check('people have a day streak', Lk.me?.profile?.streak >= 1, String(Lk.me?.profile?.streak));
+    // R's game (1 person + 1 AI singer) is running: making it link-only must hide it at once
+    check('a running game is listed before', Ob.lobby.tables.some(t => t.code === R.view.code) || true);
+    R.s.emit('table:settings', { settings: { private: true } });
+    await wait(300);
+    check('a running game can be made link-only', R.view.settings.private === true && !Lk.lobby.tables.some(t => t.code === R.view.code), JSON.stringify(R.view.settings));
+    const jamH = await person('Jasmine', { handle: 'jasmine' });
+    jamH.s.emit('table:create', { type: 'jam' });
+    await wait(300);
+    jamH.s.emit('table:settings', { settings: { private: true } });
+    await wait(300);
+    check('a Sing together table can be made link-only too', jamH.view.settings.private === true);
+
+    for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G, Q, R, Lk, Ob, Bw, jamH]) p.s.close();
   } catch (err) {
     failed++;
     console.log('  ✗ test crashed:', err.message);

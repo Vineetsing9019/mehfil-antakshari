@@ -91,6 +91,19 @@ function nextLetter(word) {
   return (w[i] || '').toUpperCase();
 }
 const today = () => new Date().toISOString().slice(0, 10);
+// A basic bad-word filter for chat, names, cities and bios (English and common Hindi/Marathi abuse).
+// The word keeps its first letter; the rest becomes stars. Song titles are not filtered.
+const BAD_WORDS = /\b(f+u+c+k+\w*|motherf\w*|sh[i1]t+(?:ty|s|head)?|b[i1]tch\w*|bastard\w*|assholes?|cunts?|dicks?|sluts?|whores?|chut[iy]+[aey]*|madarch[o0]+d\w*|maderch[o0]+d\w*|bh?e?h?enc?h[o0]+d\w*|bhosd\w*|g[a@]a?ndu|randi(?:ya|yan|baaz)?|laud[ae]\w*|lavd[ae]\w*|lund\w*|bhadw[ae]\w*|chinal\w*|zavady[ae]\w*|haraami\w*|harami\w*)\b/gi;
+const tidy = s => String(s || '').replace(BAD_WORDS, w => w[0] + '*'.repeat(w.length - 1));
+// Days in a row the person opened Mehfil, ending today (or yesterday, so the streak shows until they play today).
+function streakOf(days = []) {
+  const set = new Set(days);
+  const d = new Date();
+  if (!set.has(d.toISOString().slice(0, 10))) d.setUTCDate(d.getUTCDate() - 1);
+  let n = 0;
+  while (set.has(d.toISOString().slice(0, 10))) { n++; d.setUTCDate(d.getUTCDate() - 1); }
+  return n;
+}
 const weekKey = () => {
   const d = new Date(); d.setUTCHours(0, 0, 0, 0);
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
@@ -117,10 +130,10 @@ function parseImage(s) {
 
 // Applies the profile the browser sent. Keeps the old photo if none is sent.
 function applyProfile(person, p) {
-  person.name = clean(p.name, 20);
+  person.name = tidy(clean(p.name, 20));
   person.handle = uniqueHandle(p.handle || person.name, person.token);
-  person.city = clean(p.city, 30);
-  person.bio = clean(p.bio, 120);
+  person.city = tidy(clean(p.city, 30));
+  person.bio = tidy(clean(p.bio, 120));
   person.defaultSeed = person.name || 'Singer'; // the classic default avatar is the person's initials
   if (p.photo !== undefined) person.photo = parseImage(p.photo);
   if (Array.isArray(p.posts)) person.posts = p.posts.slice(0, MAX_POSTS).map(parseImage).filter(Boolean);
@@ -153,6 +166,7 @@ function publicPerson(token) {
     photo: bot ? p.photo : p.photo ? `/p/${token}/photo?v=${p.ver}` : null,
     posts: bot ? [] : (p.posts || []).map((_, i) => `/p/${token}/post/${i}?v=${p.ver}`),
     sung: p.sung || 0, wins: p.wins || 0, followers: bot ? 0 : followersOf(token), badges, status,
+    streak: bot ? 0 : streakOf(p.days),
     online: isOnline(token), tableCode: t ? t.code : null,
   };
 }
@@ -188,10 +202,11 @@ function peopleFor(viewer) {
 }
 function tablesFor(viewer) {
   return [...tables.values()]
-    .filter(t => t.state !== 'hidden' && [...t.members.keys()].some(isHuman) && t.members.size < capacity(t))
+    .filter(t => t.state !== 'hidden' && !t.settings.private && [...t.members.keys()].some(isHuman) && t.members.size < capacity(t))
     .filter(t => ![...t.members.keys()].some(m => blockedEither(viewer, m)))
     .map(t => ({ code: t.code, type: t.type, host: personOf(t.hostToken)?.name || 'Host',
-      count: t.members.size, max: capacity(t), state: t.state, theme: THEMES[t.settings.theme]?.label || '' }));
+      count: t.members.size, max: capacity(t), state: t.state, theme: THEMES[t.settings.theme]?.label || '',
+      lang: t.type === 'game' ? ({ en: 'English', hi: 'हिन्दी', mr: 'मराठी' })[t.settings.lang] : '' }));
 }
 function pushLobby() {
   for (const [token, sid] of live) {
@@ -211,7 +226,7 @@ function createTable(type, hostToken, settings = {}) {
   const t = {
     code: newCode(), type, hostToken, members: new Map(), order: [],
     state: type === 'jam' ? 'jam' : 'lobby',
-    settings: { theme: 'classic', turnSec: 60, lives: 3, teams: false, lang: 'en', voice: 'call', ...pick(settings) },
+    settings: { theme: 'classic', turnSec: 60, lives: 3, teams: false, lang: 'en', voice: 'call', private: false, ...pick(settings) },
     letter: null, turnIdx: 0, turnEndsAt: null, timer: null, botTimer: null, verifyTimer: null, verifying: null,
     trail: [], chat: [], claps: 0, clapTotals: new Map(), winnerToken: null, winnerTeam: null, crowdFav: null,
     queue: [], nowPlaying: null, stage: null, botSong: null, botSing: null, createdAt: Date.now(),
@@ -227,6 +242,7 @@ function pick(s) {
   if (typeof s.teams === 'boolean') out.teams = s.teams;
   if (['turns', 'call'].includes(s.voice)) out.voice = s.voice;
   if (LANGS.includes(s.lang)) out.lang = s.lang;
+  if (typeof s.private === 'boolean') out.private = s.private;
   return out;
 }
 const turnMs = t => (t.settings.turnSec || 60) * 1000;
@@ -297,6 +313,7 @@ function leaveTable(token, why = 'left') {
 
 // Replace the table's chat with the new message, keeping the last 80.
 function addChat(t, from, text, extra = {}) {
+  if (from) text = tidy(text);
   const msg = { id: `${Date.now()}${Math.random().toString(36).slice(2, 6)}`, from, name: from ? personOf(from)?.name : 'Table', text, at: Date.now(), ...extra };
   t.chat.push(msg);
   if (t.chat.length > 80) t.chat.shift();
@@ -628,7 +645,7 @@ io.on('connection', socket => {
     const picks = freeBots().slice(0, 2);
     if (!picks.length) return toast('All AI singers are busy. Try again in a minute.');
     leaveTable(token);
-    const t = createTable('game', token);
+    const t = createTable('game', token, { private: true });
     joinTable(t, token, { silent: true });
     picks.forEach(b => joinTable(t, b, { silent: true }));
     addChat(t, null, `${picks.map(b => personOf(b).name).join(' and ')} joined. Let's sing!`);
@@ -664,12 +681,19 @@ io.on('connection', socket => {
 
   socket.on('table:settings', (p = {}) => {
     const t = myTable();
-    if (!t || t.hostToken !== token || t.state === 'playing' || t.type !== 'game') return;
+    if (!t || t.hostToken !== token) return;
+    if (typeof p.settings?.private === 'boolean' && (t.type === 'jam' || t.state === 'playing')) {
+      t.settings.private = p.settings.private;
+      pushTable(t); pushLobby();
+      return;
+    }
+    if (t.state === 'playing' || t.type !== 'game') return;
     const next = pick({ ...t.settings, ...p.settings, theme: p.settings?.theme ?? t.settings.theme, turnSec: p.settings?.turnSec ?? t.settings.turnSec });
     if (p.settings?.theme && p.settings.turnSec === undefined) next.turnSec = THEMES[p.settings.theme].turnSec;
     t.settings = { ...t.settings, ...next };
     if (typeof p.settings?.teams === 'boolean') t.settings.teams = p.settings.teams;
     pushTable(t);
+    if (typeof p.settings?.private === 'boolean') pushLobby();
   });
 
   socket.on('table:start', () => {
@@ -704,7 +728,9 @@ io.on('connection', socket => {
     if (!t || t.state !== 'playing' || currentToken(t) !== token || t.verifying) return;
     const m = memberOf(t, token);
     const used = new Set(t.trail.filter(x => x.song).map(x => x.song.toLowerCase()));
-    const titles = (SONGS[t.letter] || []).filter(s => !used.has(s.toLowerCase())).sort(() => Math.random() - 0.5).slice(0, 3);
+    const lib = librarySongsFor(t.letter, [...used]).map(x => x.title);
+    const film = (SONGS[t.letter] || []).filter(s => !used.has(s.toLowerCase()));
+    const titles = [...lib.sort(() => Math.random() - 0.5).slice(0, 1), ...film.sort(() => Math.random() - 0.5)].slice(0, 3);
     if (!titles.length) return toast('No hints left for this letter');
     if (m.score < HINT_COST) return toast(`A hint costs ${HINT_COST} points`);
     m.score -= HINT_COST;
