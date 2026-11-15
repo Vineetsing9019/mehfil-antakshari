@@ -37,8 +37,9 @@
 }
 </script>
 <link rel="manifest" href="/manifest.json">
-<link rel="icon" href="/icon-192.png">
-<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Yatra+One&display=swap" onload="this.onload=null;this.rel='stylesheet'">
@@ -49,7 +50,7 @@
 <div class="lights" aria-hidden="true"></div>
 
 <header class="top">
-  <div class="brand"><span class="hi">मेहफ़िल</span><span class="en">Mehfil</span></div>
+  <div class="brand"><img class="brand-mark" src="/icon-192.png" alt="" width="34" height="34"><span class="hi">मेहफ़िल</span><span class="en">Mehfil</span></div>
   <button class="mechip" id="mechip" data-act="profile-me" hidden></button>
 </header>
 
@@ -66,6 +67,7 @@
       <p class="invite-note" id="join-invite" hidden></p>
       <h1 class="hero-line">Play Antakshari with friends</h1>
       <p class="sub">Sing a song. Pass its last letter.</p>
+      <div class="demo" aria-hidden="true"><div class="demo-card" id="demo-card"></div></div>
       <div class="card join-card"><div id="form-join"></div></div>
       <details class="about">
         <summary>About Mehfil</summary>

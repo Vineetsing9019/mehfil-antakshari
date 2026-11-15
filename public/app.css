@@ -490,3 +490,33 @@ details.about p{text-align:left;margin-top:8px}
 .invite-name input:focus{border-color:var(--gold)}
 .invite-name .mrow{margin-bottom:6px}
 .inv-empty{text-align:center;padding:6px 0}
+
+/* brand mark in the header */
+.brand{align-items:center}
+.brand-mark{width:34px;height:34px;border-radius:9px;display:block;box-shadow:0 0 14px rgba(255,193,69,.25)}
+
+/* your turn: next letter line, A-Z picker, three buttons in one row */
+.nextline{display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;font-size:14px;color:var(--muted);min-height:40px;margin:6px 0 2px}
+.nextline .nl{display:inline-grid;place-items:center;min-width:28px;height:28px;border-radius:8px;background:rgba(255,193,69,.18);color:var(--gold);font-weight:700}
+.nextline.warn{color:var(--pink)}
+.nextline .btn{padding:6px 8px;min-height:36px;color:var(--gold)}
+.turnrow{flex-wrap:nowrap}
+.turnrow .btn-sm{padding:7px 11px}
+.az{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:4px 0 12px}
+.az .chip{min-height:44px;padding:0;font-size:16px;font-weight:600}
+/* first-screen demo: singers pass the letter along */
+.demo{height:76px;margin:0 auto 14px;max-width:440px;overflow:hidden}
+.demo-card{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:18px;background:rgba(255,255,255,.05);border:1px solid var(--line);text-align:left}
+.demo-card.in{animation:demoin .5s cubic-bezier(.2,.8,.2,1)}
+.demo-card .av{width:44px;height:44px}
+.dc-text{flex:1;min-width:0;display:flex;flex-direction:column}
+.dc-text small{font-size:12px;color:var(--muted)}
+.dc-text b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dc-text .first{color:var(--gold);font-size:19px}
+.dc-next{display:flex;flex-direction:column;align-items:center;gap:1px}
+.dc-next small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+.dc-next span{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:linear-gradient(140deg,var(--gold),var(--saffron));color:#2a1200;font-weight:800;font-size:18px;box-shadow:0 0 18px rgba(255,193,69,.5)}
+.demo-card.in .dc-next span{animation:pop .6s .35s both}
+@keyframes demoin{from{opacity:0;transform:translateX(40px)}}
+/* screen changes cross-fade (where the browser supports it) */
+::view-transition-old(root),::view-transition-new(root){animation-duration:.22s}

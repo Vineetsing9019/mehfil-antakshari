@@ -36,7 +36,7 @@ const S = {
   peers: new Map(), local: null, micPromise: null, micDenied: false, micOn: false,
   actx: null, amb: null, analysers: new Map(), form: null, modalDismiss: true,
   pendingCode: null, pendingHandle: null, sheet: null, unread: 0,
-  aiVoice: true, lyricIdx: -1, lastTouched: false, saidTurn: '',
+  aiVoice: true, lyricIdx: -1, pickedLetter: null, saidTurn: '',
 };
 S.aiVoice = store.get('ak-aivoice') !== 'off';
 S.sfx = store.get('ak-sfx') !== 'off';
@@ -242,10 +242,19 @@ function closeModal() {
 /* ---------- screens ---------- */
 function show(id) {
   const was = ['boot', 'join', 'lobby', 'table'].find(s => !$('#screen-' + s).hidden);
-  ['boot', 'join', 'lobby', 'table'].forEach(s => { $('#screen-' + s).hidden = s !== id; });
-  document.body.classList.toggle('on-table', id === 'table');
-  $('#mechip').hidden = !S.named || id === 'boot';
-  if (was !== id) window.scrollTo(0, 0);
+  const apply = () => {
+    ['boot', 'join', 'lobby', 'table'].forEach(s => { $('#screen-' + s).hidden = s !== id; });
+    document.body.classList.toggle('on-table', id === 'table');
+    $('#mechip').hidden = !S.named || id === 'boot';
+    if (was !== id) window.scrollTo(0, 0);
+  };
+  const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (was && was !== id && was !== 'boot' && document.startViewTransition && !calm) {
+    // The browser snapshots the old screen, then runs apply() and cross-fades to the new one.
+    // A second screen change can cancel this fade; that is fine (the screen still changes), so ignore it.
+    const vt = document.startViewTransition(apply);
+    [vt.ready, vt.finished, vt.updateCallbackDone].forEach(p => p?.catch(() => {}));
+  } else apply();
 }
 function renderMe() {
   const btn = $('#mechip');
@@ -343,6 +352,22 @@ socket.on('kicked', () => { toast('You were removed by the host'); leaveLocal();
 socket.on('rtc', ({ from, data }) => handleRtc(from, data));
 
 /* ---------- navigation ---------- */
+// Each song starts with the letter the last one ended on (and the chain loops back to the start).
+const DEMO = [['Riya Sharma', 'Raat Suhani', 'N'], ['Aarav Mehta', 'Nadiya Kinare', 'R'], ['Sneha Iyer', 'Rang Rang', 'G'],
+  ['Kabir Malhotra', 'Gunguna Do', 'D'], ['Meera Kapoor', 'Dhoop Ki Chadar', 'R']];
+let demoI = 0;
+function demoStep() {
+  const el = $('#demo-card');
+  if (!el || $('#screen-join').hidden) return;
+  const [who, song, next] = DEMO[demoI++ % DEMO.length];
+  el.classList.remove('in');
+  void el.offsetWidth; // restart the animation
+  el.innerHTML = `${av({ name: who })}<div class="dc-text"><small>${esc(who.split(' ')[0])} sings</small><b><span class="first">${esc(song[0])}</span>${esc(song.slice(1))}</b></div>
+    <div class="dc-next"><small>next</small><span>${next}</span></div>`;
+  el.classList.add('in');
+}
+setInterval(demoStep, 2200);
+
 function showJoin() {
   const already = !$('#screen-join').hidden && S.form?.mode === 'create';
   show('join');
@@ -350,6 +375,7 @@ function showJoin() {
   note.hidden = !S.pendingCode;
   if (S.pendingCode) note.textContent = `🎤 You're invited to table ${S.pendingCode}. Type your name to join.`;
   if (already) return;
+  demoStep();
   renderProfileForm('#form-join', { mode: 'create' });
   setTimeout(() => $('#form-join [data-f=name]')?.focus(), 50);
 }
@@ -579,7 +605,7 @@ function renderTable() {
   st.textContent = v.state === 'over' ? 'Play again' : 'Start game';
   // A new turn of mine starts with empty boxes (nothing left over from an earlier turn).
   if (v.type === 'game' && v.state === 'playing' && v.turn === S.token && v.turn + ':' + v.trail.length !== S.lastTurnKey) {
-    S.draft = {}; S.lastTouched = false;
+    S.draft = {}; S.pickedLetter = null;
   }
   renderStage();
   renderAction();
@@ -594,7 +620,7 @@ function renderTable() {
     S.lastTurnKey = key;
     if (v.turn === S.token) {
       chime([523, 659, 784]); navigator.vibrate?.(200);
-      S.lastTouched = false;
+      S.pickedLetter = null;
       $('#sr').textContent = `Your turn. Sing a song starting with ${v.letter}.`;
       // Bring the song box and the Done button into view, clear of the bottom bar.
       setTimeout(() => $('#t-action')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60);
@@ -737,7 +763,7 @@ function floatEmoji(emoji, from) {
 function renderAction() {
   const v = S.table, box = $('#t-action');
   if (!v) return;
-  const keep = { song: $('#in-song')?.value ?? S.draft.song ?? '', last: $('#in-last')?.value ?? S.draft.last ?? '' };
+  const keep = { song: $('#in-song')?.value ?? S.draft.song ?? '' };
   box.classList.remove('yourturn');
   if (v.type === 'jam') {
     const onStage = v.stage && v.members.find(m => m.token === v.stage);
@@ -758,39 +784,31 @@ function renderAction() {
         <div class="songrow"><input class="song-in" id="in-song" list="song-list" maxlength="80" placeholder="Song you sang, starting with ${esc(v.letter)}" autocomplete="off" enterkeyhint="done" value="${esc(keep.song)}">
           ${SpeechRec ? '<button class="ico micsay" data-act="say-title" aria-label="Say the song name" title="Say the song name">🎤</button>' : ''}</div>
         <datalist id="song-list"></datalist>
-        <label class="lastword"><span>Last word you sang</span>
-          <input class="song-in" id="in-last" maxlength="30" placeholder="Filled from the title" autocomplete="off" enterkeyhint="done" value="${esc(keep.last)}"></label>
-        <div class="hint" id="next-hint">The last word's sound sets the next letter.</div>
+        <div class="nextline" id="next-hint"></div>
         ${hint}
-        <div class="row">
+        <div class="row turnrow">
           <button class="btn btn-primary" data-act="song-done">Done ✓</button>
           <button class="btn btn-line btn-sm" data-act="hint">💡 Hint −5</button>
-        </div>
-        <button class="btn btn-text btn-sm passbtn" data-act="pass">Pass this turn (−1 ❤)</button>`;
+          <button class="btn btn-line btn-sm" data-act="pass">Pass −1 ❤</button>
+        </div>`;
       const check = () => {
-        // The last word fills in from the song title until the singer changes it.
-        if (!S.lastTouched) {
-          const words = ($('#in-song')?.value || '').trim().split(/\s+/);
-          $('#in-last').value = words[words.length - 1] || '';
-        }
         const s = ($('#in-song')?.value || '').trim(), f = (s.match(/[a-z]/i) || [''])[0].toUpperCase();
         // Suggestions only after 2 letters, so they help with spelling but don't give the answer away.
         const dl = $('#song-list');
         if (dl) dl.innerHTML = s.length >= 2 ? (v.titles || []).filter(t => t.toLowerCase().startsWith(s.toLowerCase()) && t.toLowerCase() !== s.toLowerCase()).slice(0, 6).map(t => `<option value="${esc(t)}"></option>`).join('') : '';
-        S.draft = { song: $('#in-song')?.value || '', last: $('#in-last')?.value || '' };
+        S.draft = { song: $('#in-song')?.value || '' };
         const hintEl = $('#next-hint');
         if (!hintEl) return;
-        const lastVal = $('#in-last')?.value || '';
-        const l = (lastVal.match(/[a-z](?=[^a-z]*$)/i) || [''])[0];
-        hintEl.className = 'hint' + (s && f !== v.letter ? ' warn' : '');
-        hintEl.innerHTML = s && f !== v.letter ? `Has to start with <b>${esc(v.letter)}</b>` : l ? `Next singer gets <b>${esc(nextLetterClient(lastVal))}</b>` : "The last word's sound sets the next letter.";
+        // The next letter: the one the singer picked, or the sound of the song's last word.
+        const next = S.pickedLetter || nextLetterClient(s.split(/\s+/).pop() || '');
+        hintEl.className = 'nextline' + (s && f !== v.letter ? ' warn' : '');
+        hintEl.innerHTML = s && f !== v.letter ? `Has to start with <b>${esc(v.letter)}</b>`
+          : `Next singer gets <b class="nl">${next ? esc(next) : '…'}</b>${S.pickedLetter ? ' <span class="muted">(your pick)</span>' : ''}
+            <button class="btn btn-text btn-sm" data-act="pick-letter">${S.pickedLetter ? 'Change' : 'Choose a letter'}</button>`;
       };
       $('#in-song').oninput = check;
-      $('#in-last').oninput = () => { S.lastTouched = !!$('#in-last').value; check(); };
       check();
-      const submitOnEnter = e => { if (e.key === 'Enter') { e.preventDefault(); $('[data-act=song-done]')?.click(); } };
-      $('#in-song').onkeydown = submitOnEnter;
-      $('#in-last').onkeydown = submitOnEnter;
+      $('#in-song').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); $('[data-act=song-done]')?.click(); } };
       if (!keep.song) $('#in-song').focus({ preventScroll: true });
       return;
     }
@@ -1127,6 +1145,10 @@ const ACT = {
   'show-code': () => { $('#code-form').hidden = false; $('#show-code').hidden = true; $('#code-in').focus(); },
   'join-tap': arg => joinCode(arg),
   req: arg => { socket.emit('invite', { token: arg }); S.sent.add(arg); closeModal(); if (!S.table) renderLobby(); else renderInviteList(); },
+  'pick-letter': () => modal(`<h3>Next letter</h3><p>Pick the letter the next singer starts with.</p>
+    <div class="az">${'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(l => `<button class="chip ${S.pickedLetter === l ? 'on' : ''}" data-act="set-letter" data-arg="${l}">${l}</button>`).join('')}</div>
+    <div class="row"><button class="btn btn-text btn-sm" data-act="set-letter" data-arg="">Use the song's last letter</button></div>`),
+  'set-letter': arg => { S.pickedLetter = arg || null; closeModal(); renderAction(); $('#in-song')?.focus({ preventScroll: true }); },
   'skip-bot': () => { S.singId++; window.speechSynthesis?.cancel(); musicBed(false); socket.emit('turn:skipbot'); },
   rematch: () => { socket.emit('rematch'); closeModal(); },
   daily: () => socket.emit('table:quick', { daily: true }),
@@ -1204,8 +1226,9 @@ const ACT = {
   'toggle-teams': () => socket.emit('table:settings', { settings: { teams: !S.table.settings.teams } }),
   kick: arg => { if (confirm('Remove this singer from the table?')) socket.emit('table:kick', { token: arg }); },
   'song-done': () => {
-    socket.emit('turn:done', { song: $('#in-song')?.value || '', lastWord: $('#in-last')?.value || '' });
-    S.draft = {}; S.lastTouched = false;
+    const song = $('#in-song')?.value || '';
+    socket.emit('turn:done', { song, lastWord: S.pickedLetter || song.trim().split(/\s+/).pop() || '' });
+    S.draft = {}; S.pickedLetter = null;
     store.set('ak-tut', 'seen');
   },
   pass: () => socket.emit('turn:pass'),
