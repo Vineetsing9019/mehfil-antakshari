@@ -409,6 +409,10 @@ function storyHtml(p) {
     <span class="ringed ${p.status === 'free' ? '' : 'busy'}">${av(p)}</span>
     <small>${p.bot ? '<span class="aib">AI</span>' : ''}${esc(name)}</small></button>`;
 }
+// One open table: type, host, seats, language, and Join.
+function tableCard(t) {
+  return `<div class="tcard"><div><b>${t.type === 'jam' ? '🎶 Sing together' : '🎤 Antakshari'}</b><small>${esc(t.host)} · ${t.count}/${t.max}${t.lang ? ' · ' + esc(t.lang) : ''}${t.state === 'playing' ? ' · game on' : ''}</small></div><button class="btn btn-line btn-sm" data-act="join-tap" data-arg="${esc(t.code)}">Join</button></div>`;
+}
 function renderLobby() {
   if (S.table) return;
   const first = (S.me?.name || '').split(' ')[0];
@@ -422,7 +426,8 @@ function renderLobby() {
   $('#home-extra').innerHTML = extra.join('');
   // Open tables: only shown when there are some.
   $('#tables-card').hidden = !S.lobby.tables.length;
-  $('#lobby-tables').innerHTML = S.lobby.tables.map(t => `<div class="tcard"><div><b>${t.type === 'jam' ? '🎶 Sing together' : '🎤 Antakshari'}</b><small>${esc(t.host)} · ${t.count}/${t.max}${t.lang ? ' · ' + esc(t.lang) : ''}${t.state === 'playing' ? ' · game on' : ''}</small></div><button class="btn btn-line btn-sm" data-act="join-tap" data-arg="${esc(t.code)}">Join</button></div>`).join('');
+  $('#lobby-tables').innerHTML = S.lobby.tables.slice(0, 1).map(tableCard).join('')
+    + (S.lobby.tables.length > 1 ? `<button class="btn btn-text btn-sm" data-act="all-tables">See all ${S.lobby.tables.length} tables</button>` : '');
   // Real people and AI singers are always in separate rows.
   const humans = S.lobby.people.filter(p => !p.bot), ais = S.lobby.people.filter(p => p.bot);
   // One row: friends who are online first (green ring), then the AI singers.
@@ -625,6 +630,8 @@ function renderTable() {
       // Bring the song box and the Done button into view, clear of the bottom bar.
       setTimeout(() => $('#t-action')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60);
     }
+    // Someone else's turn: back to the top, so the stage and the top bar (code, Leave) are in view.
+    if (v.turn !== S.token && window.scrollY > 0) window.scrollTo({ top: 0, behavior: 'smooth' });
     const botNow = v.members.find(m => m.token === v.turn)?.bot;
     S.singId++;   // stop any line that is still waiting to be spoken
     S.lyricIdx = -1;
@@ -1143,7 +1150,8 @@ const ACT = {
   board: () => modal('<h3>🏆 This week</h3><ol class="board-list">' + boardHtml() + '</ol><div class="row"><button class="btn btn-primary" data-act="close">OK</button></div>'),
   howto: () => modal('<h3>How to play</h3><ol class="howto"><li>Sing a song that starts with the big letter.</li><li>Type its name. Its last letter goes to the next singer.</li><li>Everyone votes. Last singer standing wins.</li></ol><div class="row"><button class="btn btn-primary" data-act="close">Got it</button></div>'),
   'show-code': () => { $('#code-form').hidden = false; $('#show-code').hidden = true; $('#code-in').focus(); },
-  'join-tap': arg => joinCode(arg),
+  'join-tap': arg => { closeModal(); joinCode(arg); },
+  'all-tables': () => modal(`<h3>Open tables</h3><div class="tlist">${S.lobby.tables.map(tableCard).join('')}</div><div class="row"><button class="btn btn-text btn-sm" data-act="close">Close</button></div>`),
   req: arg => { socket.emit('invite', { token: arg }); S.sent.add(arg); closeModal(); if (!S.table) renderLobby(); else renderInviteList(); },
   'pick-letter': () => modal(`<h3>Next letter</h3><p>Pick the letter the next singer starts with.</p>
     <div class="az">${'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(l => `<button class="chip ${S.pickedLetter === l ? 'on' : ''}" data-act="set-letter" data-arg="${l}">${l}</button>`).join('')}</div>

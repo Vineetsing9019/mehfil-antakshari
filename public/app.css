@@ -520,3 +520,11 @@ details.about p{text-align:left;margin-top:8px}
 @keyframes demoin{from{opacity:0;transform:translateX(40px)}}
 /* screen changes cross-fade (where the browser supports it) */
 ::view-transition-old(root),::view-transition-new(root){animation-duration:.22s}
+
+/* fixes from the 15 Nov screenshots */
+.badgepop{top:84px;padding:12px 20px}
+.badgepop span{font-size:34px}
+.story small{display:block;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.story small .aib{display:inline-grid;vertical-align:1px}
+.row-title .muted{margin-left:6px}
+.badgepop{top:auto;bottom:calc(104px + env(safe-area-inset-bottom))}

@@ -6,7 +6,8 @@
   "scripts": {
     "test": "node tests/flow-test.js",
     "start": "node server.js",
-    "make-icons": "node scripts/make-icons.js"
+    "make-icons": "node scripts/make-brand.cjs",
+    "e2e": "node tests/e2e/run-all.cjs"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +21,7 @@
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
+    "puppeteer-core": "^23.11.1",
     "socket.io-client": "^4.8.1"
   }
 }
