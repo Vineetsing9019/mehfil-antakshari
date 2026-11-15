@@ -116,3 +116,28 @@ Status: **Done** = built and checked in the browser (phone size) and by the test
 | 53 | Weekly winner shown on the home screen. | Social proof. | Done |
 | 54 | Audio level meter on each seat while people talk. | Shows who is speaking. | Done |
 | 55 | Offline page when there is no internet. | Clear message instead of a broken screen. | Done |
+
+## I. Next 20 changes (15 Nov, after testing the new screens)
+
+| # | Change | Why | Status |
+|---|--------|-----|--------|
+| 56 | Every bot song gets a chorus, so a bot sings verse + chorus with no line repeated over and over. | Hearing the same 4 lines for 30 seconds is boring. | Done |
+| 57 | Each line is spoken at a different pitch, so the bot sounds more like singing than reading. | Feels more musical with the same free voice. | Done |
+| 58 | Soft tanpura and dholak play under the bot's voice. | Music makes it feel like a performance. | Open |
+| 59 | "Skip ⏭" on a bot's turn. | Nobody should wait 30 seconds for a bot they don't want to hear. | Open |
+| 60 | Bots say something in chat after a good song ("Wah! 👏"). | The table feels alive even with only AI singers. | Open |
+| 61 | "+10" / "+15 fast" pops up when your song is accepted. | Instant reward. | Open |
+| 62 | Tick sound and buzz in the last 5 seconds of your turn. | You notice time running out without looking. | Open |
+| 63 | Songs sung this game, listed on the Game over screen. | A nice recap to share. | Open |
+| 64 | Share button uses the phone's own share sheet (WhatsApp, Instagram, SMS…). | Not everyone uses WhatsApp. | Open |
+| 65 | Mute one person at the table (only for you). | Calls need this when someone is noisy. | Open |
+| 66 | Speak the song title instead of typing it (🎤 button, where the browser supports it). | Typing while singing is hard. | Open |
+| 67 | Song suggestions while typing the title. | Faster, fewer spelling mistakes. | Open |
+| 68 | Bot difficulty for Play now: Easy / Normal / Hard. | Beginners win sometimes; experts get a challenge. | Open |
+| 69 | "Add to home screen" prompt after your first game. | Brings people back like an app. | Open |
+| 70 | Big table code and a QR code to join at a party. | Easy for people in the same room. | Open |
+| 71 | Badge pop-up when you earn one (First song, Winner…). | Celebrates progress. | Open |
+| 72 | Daily challenge: one letter a day, keep your streak. | A reason to come back daily. | Open |
+| 73 | Non-hosts can ask for a rematch. | The game shouldn't stall on the host. | Open |
+| 74 | Photo nudge after the first game ("Add a photo so friends know you"). | Asked at the right time, not at sign-up. | Open |
+| 75 | Sound effects on/off in Settings. | Some people play in quiet places. | Open |

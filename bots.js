@@ -1,17 +1,27 @@
-// Bot singers so the game can be tried alone. Profiles are made up; songs are real Hindi film song titles.
+// AI singers so the game can be played alone. Profiles are made up and shown as AI in the app.
+// SONGS are Hindi film song titles (titles only) used when no Mehfil library song fits the letter.
 const PROFILES = [
-  { name: 'Riya Sharma', handle: 'riya.sings', city: 'Mumbai', bio: 'Arijit on loop 🎧 Bathroom singer with stage dreams', verified: true },
-  { name: 'Aarav Mehta', handle: 'aarav_melody', city: 'Delhi', bio: 'Kishore da forever 🎤 Road-trip DJ' },
-  { name: 'Sneha Iyer', handle: 'sneha.sur', city: 'Chennai', bio: 'Carnatic by day, Bollywood by night 🌙' },
-  { name: 'Kabir Malhotra', handle: 'kabir.tunes', city: 'Chandigarh', bio: 'Punjabi beats & dhol 🥁 Balle balle!' },
-  { name: 'Ananya Rao', handle: 'ananya_raagini', city: 'Bengaluru', bio: 'Lata ji fan girl ✨ Sings to her plants', verified: true },
-  { name: 'Rohan Desai', handle: 'rohan.rafi', city: 'Pune', bio: 'Old is gold 📻 Rafi saab devotee' },
-  { name: 'Meera Kapoor', handle: 'meeraa.music', city: 'Jaipur', bio: 'Sufi soul 🕊 Chai + ghazals' },
-  { name: 'Arjun Nair', handle: 'arjun.antakshari', city: 'Kochi', bio: '3x college antakshari champ 🏆 Try me', verified: true },
-  { name: 'Ishita Verma', handle: 'ishita.hums', city: 'Lucknow', bio: 'Hum lo, gungunao 🎶 Tehzeeb wali singer' },
-  { name: 'Vikram Joshi', handle: 'vikky.vibes', city: 'Ahmedabad', bio: 'Garba king, mic hogger 😎' },
-  { name: 'Pooja Patel', handle: 'pooja.pitchperfect', city: 'Surat', bio: 'Pitch perfect… mostly 😅' },
-  { name: 'Dev Malik', handle: 'dev.dhun', city: 'Hyderabad', bio: 'Shreya Ghoshal stan 💜 Biryani & ballads' },
+  // g: the voice a singer gets (f = female, m = male). Each of the 20 also has its own pitch and speed (makeBots).
+  { name: 'Riya Sharma', g: 'f', handle: 'riya.sings', city: 'Mumbai', bio: 'Arijit on loop 🎧 Bathroom singer with stage dreams' },
+  { name: 'Aarav Mehta', g: 'm', handle: 'aarav_melody', city: 'Delhi', bio: 'Kishore da forever 🎤 Road-trip DJ' },
+  { name: 'Sneha Iyer', g: 'f', handle: 'sneha.sur', city: 'Chennai', bio: 'Carnatic by day, Bollywood by night 🌙' },
+  { name: 'Kabir Malhotra', g: 'm', handle: 'kabir.tunes', city: 'Chandigarh', bio: 'Punjabi beats & dhol 🥁 Balle balle!' },
+  { name: 'Ananya Rao', g: 'f', handle: 'ananya_raagini', city: 'Bengaluru', bio: 'Lata ji fan girl ✨ Sings to her plants' },
+  { name: 'Rohan Desai', g: 'm', handle: 'rohan.rafi', city: 'Pune', bio: 'Old is gold 📻 Rafi saab devotee' },
+  { name: 'Meera Kapoor', g: 'f', handle: 'meeraa.music', city: 'Jaipur', bio: 'Sufi soul 🕊 Chai + ghazals' },
+  { name: 'Arjun Nair', g: 'm', handle: 'arjun.antakshari', city: 'Kochi', bio: '3x college antakshari champ 🏆 Try me' },
+  { name: 'Ishita Verma', g: 'f', handle: 'ishita.hums', city: 'Lucknow', bio: 'Hum lo, gungunao 🎶 Tehzeeb wali singer' },
+  { name: 'Vikram Joshi', g: 'm', handle: 'vikky.vibes', city: 'Ahmedabad', bio: 'Garba king, mic hogger 😎' },
+  { name: 'Pooja Patel', g: 'f', handle: 'pooja.pitchperfect', city: 'Surat', bio: 'Pitch perfect… mostly 😅' },
+  { name: 'Dev Malik', g: 'm', handle: 'dev.dhun', city: 'Hyderabad', bio: 'Shreya Ghoshal stan 💜 Biryani & ballads' },
+  { name: 'Sakshi Kulkarni', g: 'f', handle: 'sakshi.sur', city: 'Nashik', bio: 'Marathi bhavgeet and Bollywood mashups 🎶' },
+  { name: 'Omkar Patil', g: 'm', handle: 'omkar.taal', city: 'Kolhapur', bio: 'Dhol-tasha at every festival 🥁' },
+  { name: 'Nisha Bhatt', g: 'f', handle: 'nisha.notes', city: 'Dehradun', bio: 'Pahadi folk and rainy-day songs 🌧' },
+  { name: 'Farhan Shaikh', g: 'm', handle: 'farhan.qawwal', city: 'Bhopal', bio: 'Qawwali nights, chai in hand ☕' },
+  { name: 'Tanvi Deshpande', g: 'f', handle: 'tanvi.tarana', city: 'Nagpur', bio: 'Classical student, filmy at heart 🎼' },
+  { name: 'Yash Rathod', g: 'm', handle: 'yash.yodel', city: 'Indore', bio: 'Kishore yodels in the shower 🚿' },
+  { name: 'Zoya Khan', g: 'f', handle: 'zoya.ghazal', city: 'Srinagar', bio: 'Ghazals, snow and old radio 📻' },
+  { name: 'Manav Gupta', g: 'm', handle: 'manav.melody', city: 'Kolkata', bio: 'Rabindra sangeet meets Bollywood 🎹' },
 ];
 
 const SONGS = {
@@ -45,8 +55,9 @@ const rand = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
 const fmt = n => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n);
 
 function makeBots() {
-  return PROFILES.map(p => ({
+  return PROFILES.map((p, i) => ({
     ...p,
+    voice: i, // 20 singers, 20 voice settings (see VOICES in public/app.js)
     id: `bot-${p.handle}`,
     bot: true,
     avatar: '🎤',

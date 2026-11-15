@@ -408,7 +408,7 @@ function botTurn(t, id) {
   t.botSong = song;
   // A library song is sung for about 35 seconds (or less on quick turns), repeating its lines to fill the time.
   const perf = sing ? songPerformance(sing, Math.max(8, Math.min(35, turnMs(t) / 1000 - 10))) : null;
-  t.botSing = sing ? { id: sing.id, title: sing.title, lang: sing.lang, lines: sing.lines, sing: perf.lines } : null;
+  t.botSing = sing ? { id: sing.id, title: sing.title, lang: sing.lang, lines: sing.lines, sing: perf.lines, voice: bots.get(id).voice, g: bots.get(id).g } : null;
   const ms = sing ? perf.seconds * 1000 : song ? 5000 + Math.random() * 6000 : 6000 + Math.random() * 4000;
   t.botTimer = setTimeout(() => {
     if (t.state !== 'playing' || currentToken(t) !== id || t.verifying) return;

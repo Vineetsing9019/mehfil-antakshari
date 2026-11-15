@@ -1,6 +1,8 @@
 // Original songs the bots can sing. The lyrics are written for Mehfil, not copied from any film,
 // so they can be used freely. The bots speak them in a browser voice (no recording is stored).
 // Each song starts with the letter it is listed under, so a bot can sing it when that letter is in play.
+const CHORUS = require("./chorus");
+
 const LIBRARY = [
   {
     id: 'dhoop-ki-chadar', title: 'Dhoop Ki Chadar', lang: 'hi',
@@ -155,17 +157,19 @@ function librarySongsFor(letter, usedTitles = []) {
 const SECS_PER_CHAR = 0.07, GAP_S = 0.35;
 
 // The lines a bot speaks to fill about targetSec seconds: the song repeats until it is long enough.
+// Sung like a real song: verse, chorus, then the chorus once more to close. It stops at targetSec
+// (quick turns) but never loops the same lines over and over.
 function songPerformance(song, targetSec) {
+  const chorus = CHORUS[song.id] || [];
+  const order = [...song.lines, ...chorus, ...chorus];
   const lines = [];
   let total = 0;
-  while (total < targetSec) {
-    for (const line of song.lines) {
-      lines.push(line);
-      total += line.length * SECS_PER_CHAR + GAP_S;
-      if (total >= targetSec) break;
-    }
+  for (const line of order) {
+    if (total >= targetSec) break;
+    lines.push(line);
+    total += line.length * SECS_PER_CHAR + GAP_S;
   }
   return { lines, seconds: total };
 }
 
-module.exports = { LIBRARY, librarySongsFor, songPerformance };
+module.exports = { LIBRARY, CHORUS, librarySongsFor, songPerformance };

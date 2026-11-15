@@ -82,45 +82,72 @@ function hum(seed) {
     }
   } catch { /* no audio */ }
 }
-// A bot "sings" its lyrics by speaking them in a browser voice. Each bot gets its own voice and pitch.
+// 20 AI singer voices, one per singer (the server sends the number). Each is a pitch, a speed and which of
+// the device's own voices to use, so it costs nothing. Female singers sit higher, male singers lower.
+const VOICES = [
+  { p: 1.22, r: 0.92, n: 0 }, { p: 0.78, r: 0.90, n: 0 }, { p: 1.10, r: 0.96, n: 1 }, { p: 0.88, r: 0.94, n: 1 },
+  { p: 1.32, r: 0.88, n: 2 }, { p: 0.70, r: 0.86, n: 2 }, { p: 1.16, r: 0.84, n: 3 }, { p: 0.95, r: 0.98, n: 3 },
+  { p: 1.28, r: 0.95, n: 1 }, { p: 0.82, r: 0.97, n: 4 }, { p: 1.05, r: 0.90, n: 4 }, { p: 0.74, r: 0.92, n: 1 },
+  { p: 1.38, r: 0.93, n: 0 }, { p: 0.90, r: 0.85, n: 2 }, { p: 1.14, r: 1.00, n: 2 }, { p: 0.66, r: 0.95, n: 3 },
+  { p: 1.25, r: 0.86, n: 3 }, { p: 0.86, r: 1.00, n: 0 }, { p: 1.08, r: 0.94, n: 4 }, { p: 0.80, r: 0.88, n: 4 },
+];
+const FEMALE_VOICE = /female|woman|zira|heera|kalpana|swara|neerja|aditi|veena|lekha|kajal|samantha|susan|hazel|libby|sonia|google हिन्दी|google us english|google uk english female/i;
+const MALE_VOICE = /\bmale\b|\bman\b|ravi|hemant|madhur|prabhat|rishi|david|mark|george|daniel|ryan|guy|google uk english male/i;
+// Picks one of the device's voices for the song's language, the singer's gender first.
+function pickVoice(lang, g, n) {
+  const langs = lang === 'en' ? ['en-in', 'en-gb', 'en-us', 'en'] : ['hi-in', 'mr-in', 'en-in', 'en-gb', 'en-us'];
+  const rank = v => { const i = langs.findIndex(l => v.lang.replace('_', '-').toLowerCase().startsWith(l)); return i < 0 ? 99 : i; };
+  const pool = (window.speechSynthesis?.getVoices() || []).filter(v => rank(v) < 99).sort((a, b) => rank(a) - rank(b));
+  const isF = v => FEMALE_VOICE.test(v.name), isM = v => !isF(v) && MALE_VOICE.test(v.name);
+  const same = pool.filter(g === 'm' ? isM : isF);
+  const list = same.length ? same : pool;
+  return list.length ? list[n % list.length] : null;
+}
+// A bot "sings" its lyrics in its own voice. Each line moves up or down a little, so it sounds sung, not read.
 function speakSong(song, botToken) {
   const synth = window.speechSynthesis;
   if (!synth || !window.SpeechSynthesisUtterance) return hum(botToken);
-  const voices = synth.getVoices();
   const h = [...String(botToken)].reduce((a, c) => a + c.charCodeAt(0), 0);
-  const want = song.lang === 'en' ? ['en-IN', 'en-US', 'en-GB'] : ['hi-IN', 'mr-IN', 'en-IN', 'en-US'];
-  let pool = [];
-  for (const l of want) {
-    pool = voices.filter(v => v.lang.replace('_', '-').toLowerCase().startsWith(l.toLowerCase()));
-    if (pool.length) break;
-  }
-  const voice = pool.length ? pool[h % pool.length] : null;
+  const vp = VOICES[(Number.isInteger(song.voice) ? song.voice : h) % VOICES.length];
+  const voice = pickVoice(song.lang, song.g || (h % 2 ? 'm' : 'f'), vp.n);
+  const tune = [1, 1.07, 0.97, 1.04];
   // Speak one line at a time, starting the next only when the last one ends. Queuing every line at once
   // makes some voices buzz or click between lines.
   const id = ++S.singId;
-  const pitch = 0.95 + (h % 3) * 0.05;   // 0.95 to 1.05: each bot a little different, no distortion
   const lines = [...(song.sing || song.lines)];
-  const n = song.lines.length;
   let k = 0;
   const sayNext = () => {
     if (id !== S.singId || !lines.length) return;
-    const idx = k++ % n;
+    const idx = k++;
     const u = new SpeechSynthesisUtterance(lines.shift());
     // Karaoke: light up the line being sung.
     u.onstart = () => { if (id === S.singId) { S.lyricIdx = idx; highlightLyric(); } };
     if (voice) { u.voice = voice; u.lang = voice.lang; }
-    u.pitch = pitch;
-    u.rate = 0.9;
+    u.pitch = Math.max(0.1, Math.min(2, vp.p * tune[idx % tune.length]));
+    u.rate = vp.r;
     u.volume = 1;
     S.utter = u;   // keep a reference so the browser does not drop it mid-line
-    u.onend = () => setTimeout(sayNext, 350);
-    u.onerror = () => setTimeout(sayNext, 350);
+    u.onend = () => setTimeout(sayNext, 300);
+    u.onerror = () => setTimeout(sayNext, 300);
     synth.speak(u);
   };
   sayNext();
 }
+// Browsers load their voice list late; ask early so the first song already has the right voice.
+window.speechSynthesis?.getVoices();
+window.speechSynthesis?.addEventListener?.('voiceschanged', () => window.speechSynthesis.getVoices());
+// The lyric box shows the 4 lines being sung now (verse, then chorus), with the current line lit.
+function lyricBox(v) {
+  const all = v.botSing.sing || v.botSing.lines;
+  const pos = Math.max(0, S.lyricIdx);
+  const start = Math.floor(pos / 4) * 4;
+  const part = start === 0 ? '' : start === 4 ? 'Chorus' : 'Chorus again';
+  return '<div class="lyric-title">🎵 ' + esc(v.botSing.title) + (part ? ' · ' + part : '') + '</div>'
+    + all.slice(start, start + 4).map((l, i) => '<span class="' + (start + i === S.lyricIdx ? 'on' : '') + '">' + esc(l) + '</span>').join('');
+}
 function highlightLyric() {
-  $$('#t-stage .lyric span').forEach((el, i) => el.classList.toggle('on', i === S.lyricIdx));
+  const box = $('#t-stage .lyric');
+  if (box && S.table?.botSing) box.innerHTML = lyricBox(S.table);
 }
 // Tanpura drone and a soft dholak beat for between turns.
 function startAmbience() {
@@ -567,7 +594,7 @@ function renderStage() {
   // A bot's lyrics sit under the stage, one line lit at a time (karaoke).
   // Under the circle: what the bot is singing (title and lyrics), or the last song sung.
   const lyric = v.state === 'playing' && v.botSing
-    ? `<div class="lyric" aria-label="Lyrics"><div class="lyric-title">🎵 ${esc(v.botSing.title)}</div>${v.botSing.lines.map((l, i) => `<span class="${i === S.lyricIdx ? 'on' : ''}">${esc(l)}</span>`).join('')}</div>`
+    ? `<div class="lyric" aria-label="Lyrics">${lyricBox(v)}</div>`
     : v.state === 'playing' && v.botSong && v.members.find(m => m.token === v.turn)?.bot ? `<div class="lastsong">🎵 Singing “${esc(v.botSong)}”</div>`
     : v.state === 'playing' ? lastSongLine(v) : '';
   $('#t-stage').innerHTML = `<div class="stage" id="stage"><div class="rug"></div>${ring}<div class="center">${center}</div>${seats}${verify}</div>${lyric}${teamLine}${crowd}`;
