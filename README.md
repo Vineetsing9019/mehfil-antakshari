@@ -25,6 +25,7 @@ own songs, lyrics lighting up line by line.
 ## What it does
 
 - **Play in seconds.** First visit asks only for a name. Play now starts a game with AI singers at once.
+- **Find a friend.** Search a name on home, then invite them or join their open table.
 - **Play with friends.** Share a table link on WhatsApp (or a QR code in the same room). Everyone talks like a call, and can turn on video at link-only tables (WebRTC).
 - **Fair and fun.** The table votes on every song. Lives, points, a fast-answer bonus, hints, teams, themes (90s, actor, tune), Hindi and Marathi letters.
 - **AI singers.** 20 singers with their own voices sing 101 original songs (verse and chorus), clearly marked AI. Easy, Normal or Hard.
@@ -43,7 +44,7 @@ What changed and when: [CHANGELOG.md](CHANGELOG.md). How it works inside, and th
 | Voice and video | WebRTC peer-to-peer audio and video between players, STUN/TURN for mobile data |
 | Browser app | Plain JavaScript, HTML and CSS (no framework), Web Audio, Web Speech (AI voices and "say the song"), Canvas (result picture), View Transitions |
 | App features | Service worker (instant reopen and offline), web app manifest (install on phones) |
-| Tests | 78 server acceptance checks (`npm test`), 107 end-to-end checks in headless Chrome with Puppeteer (`npm run e2e`), including a two-person video call |
+| Tests | 80 server acceptance checks (`npm test`), 113 end-to-end checks in headless Chrome with Puppeteer (`npm run e2e`), including a two-person video call |
 
 ```mermaid
 flowchart LR
@@ -59,7 +60,7 @@ flowchart LR
 ```bash
 npm install
 npm start          # http://localhost:5090 (and https on your Wi-Fi address, port 5443, for phones)
-npm test           # 78 server checks
+npm test           # 80 server checks
 npm run e2e        # end-to-end checks in headless Chrome (start the server first)
 ```
 

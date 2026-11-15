@@ -68,10 +68,10 @@ the first screen is ready in **about 0.8 s on a first visit and 0.4 s on later v
 
 ## 6. How it is tested
 
-- **Server checks** (`npm test`, 78 checks): the test starts its own server on a spare port with throwaway data,
+- **Server checks** (`npm test`, 80 checks): the test starts its own server on a spare port with throwaway data,
   connects several fake players and plays real flows: joining by link, votes, lives, AI singers, skip,
   invites during a game, link-only tables, the bad-word filter, badges, the daily challenge, the QR code.
-- **Browser checks** (`npm run e2e`, 107 checks): headless Chrome at phone size, with a fake microphone.
+- **Browser checks** (`npm run e2e`, 113 checks): headless Chrome at phone size, with a fake microphone.
   They check what a person sees: each screen fits the phone, there is exactly one main button per screen,
   nothing scrolls sideways, the karaoke line lights up, leaving stops the AI singer's voice, sharing makes a picture,
   and there are no page errors.
@@ -89,6 +89,7 @@ the first screen is ready in **about 0.8 s on a first visit and 0.4 s on later v
 | App crashed when opened offline | The live-connection library wasn't saved for offline use | It is saved now, and the app runs with a stand-in until the connection is back |
 | Home grew longer than the screen | Every open table and online friend added a box | One row of singers, one open table plus "See all" |
 | Video tiles showed but nothing was sent | Headless Chrome's fake camera ends at once, so the test could not tell | A read-only call-statistics helper counts video bytes sent and frames decoded; the test uses an animated canvas as the camera and proves video flows both ways |
+| Link-only table codes were visible to everyone | The home screen sent each person's table code to all players | Codes are only sent for open tables; a server check makes sure of it |
 | Page error on fast screen changes | A second screen change cancels the first cross-fade | Cancelled fades are ignored; the screen still changes |
 
 ## 8. What's next

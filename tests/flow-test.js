@@ -371,7 +371,18 @@ async function main() {
     await wait(300);
     check('making the table public turns every camera off', V1.view.members.every(m => !m.cam));
 
-    for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G, Q, R, Lk, Ob, Bw, jamH, Dy, Fr, Hs, Gs, V1, ...vs]) p.s.close();
+    console.log('\n13. Find a friend: open tables can be joined; link-only table codes stay private');
+    const Pa = await person('Pallavi', { handle: 'pallavi' });
+    const Pb = await person('Prakash', { handle: 'prakash' });
+    Pa.s.emit('table:create', { type: 'game' });
+    await wait(400);
+    const seen = () => Pb.lobby.people.find(p => p.token === Pa.token);
+    check('a friend at an open table shows its code (so you can join)', seen()?.tableCode === Pa.view.code, String(seen()?.tableCode));
+    Pa.s.emit('table:settings', { settings: { private: true } });
+    await wait(400);
+    check('a friend at a link-only table: the code is not shared', seen() && seen().tableCode === null, String(seen()?.tableCode));
+
+    for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G, Q, R, Lk, Ob, Bw, jamH, Dy, Fr, Hs, Gs, V1, ...vs, Pa, Pb]) p.s.close();
   } catch (err) {
     failed++;
     console.log('  ✗ test crashed:', err.message);

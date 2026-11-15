@@ -2,6 +2,12 @@
 
 Newest first. Every change is also in the [commit history](https://github.com/Vineetsing9019/mehfil-antakshari/commits/main).
 
+## 15 November 2026 (evening)
+
+- **Find a friend** on home: type a name or @username to see who is online, then Invite them, or Join them if they are at an open table.
+- Privacy fix: the code of a link-only table is no longer sent to everyone on the home screen, so nobody can join it without the link.
+- 80 server checks and 113 browser checks, all passing.
+
 ## 15 November 2026
 
 **Looks and feel**

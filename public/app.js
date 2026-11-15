@@ -438,7 +438,27 @@ function renderLobby() {
   $('#online-count').textContent = humans.length ? `· ${humans.length}` : '';
   $('#stories').innerHTML = humans.slice(0, 30).map(storyHtml).join('');
   $('#ai-people').innerHTML = [...humans, ...ais].map(storyHtml).join('');
+  renderFindList();
 }
+// Find a friend on home: people online whose name or @username matches. Free: Invite. At an open table: Join.
+function renderFindList() {
+  const box = $('#find-list'); if (!box || $('#find').hidden) return;
+  const q = ($('#find-q')?.value || '').trim().toLowerCase().replace(/^@/, '');
+  const list = S.lobby.people
+    .filter(p => !q || (p.name + ' ' + p.handle).toLowerCase().includes(q))
+    .sort((a, b) => (a.bot ? 1 : 0) - (b.bot ? 1 : 0))
+    .slice(0, q ? 8 : 5);
+  box.innerHTML = list.length ? list.map(p => {
+    let act;
+    if (p.status === 'free') act = S.sent.has(p.token) ? '<span class="pstate">Invited</span>' : `<button class="btn btn-line btn-sm" data-act="req" data-arg="${esc(p.token)}">Invite</button>`;
+    else if (p.tableCode) act = `<button class="btn btn-line btn-sm" data-act="join-tap" data-arg="${esc(p.tableCode)}">Join</button>`;
+    else act = '<span class="pstate">Busy</span>';
+    const where = p.status === 'free' ? 'Free to sing' : p.tableCode ? (p.tableType === 'jam' ? 'Singing together' : p.status === 'playing' ? 'In a game · join to listen' : 'At a table') : 'At a private table';
+    return `<div class="mrow">${av(p)}<div class="who"><div class="nm">${esc(p.name)}${p.bot ? '<span class="aib">AI</span>' : ''}</div><div class="role">${p.bot ? 'AI singer' : '@' + esc(p.handle) + ' · ' + where}</div></div>${act}</div>`;
+  }).join('') : `<div class="muted inv-empty">${q ? 'No one online with that name. Share your table link so they can join.' : 'No one online yet.'}</div>`;
+}
+document.addEventListener('input', e => { if (e.target.id === 'find-q') renderFindList(); });
+
 function boardHtml() {
   return S.board.length
     ? S.board.map((r, i) => `<li class="${i === 0 ? 'top' : ''}"><span>${i === 0 ? '👑' : i + 1 + '.'}</span><b>${esc(r.name)}</b><b>${r.points}</b></li>`).join('')
@@ -1233,6 +1253,11 @@ const ACT = {
   howto: () => modal('<h3>How to play</h3><ol class="howto"><li>Sing a song that starts with the big letter.</li><li>Type its name. Its last letter goes to the next singer.</li><li>Everyone votes. Last singer standing wins.</li></ol><div class="row"><button class="btn btn-primary" data-act="close">Got it</button></div>'),
   'show-code': () => { $('#code-form').hidden = false; $('#show-code').hidden = true; $('#code-in').focus(); },
   'join-tap': arg => { closeModal(); joinCode(arg); },
+  'find-friend': () => {
+    const f = $('#find'); f.hidden = !f.hidden;
+    $('#find-btn').textContent = f.hidden ? '🔍 Find a friend' : 'Close';
+    if (!f.hidden) { renderFindList(); $('#find-q').focus(); }
+  },
   'all-tables': () => modal(`<h3>Open tables</h3><div class="tlist">${S.lobby.tables.map(tableCard).join('')}</div><div class="row"><button class="btn btn-text btn-sm" data-act="close">Close</button></div>`),
   req: arg => { socket.emit('invite', { token: arg }); S.sent.add(arg); closeModal(); if (!S.table) renderLobby(); else renderInviteList(); },
   'pick-letter': () => modal(`<h3>Next letter</h3><p>Pick the letter the next singer starts with.</p>

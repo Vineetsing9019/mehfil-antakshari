@@ -166,7 +166,9 @@ function publicPerson(token) {
     sung: p.sung || 0, wins: p.wins || 0, followers: bot ? 0 : followersOf(token), badges, status,
     streak: bot ? 0 : streakOf(p.days),
     daily: bot ? null : { letter: dailyLetter(), done: p.dailyDone === today() },
-    online: isOnline(token), tableCode: t ? t.code : null,
+    // A table's code is shared only if the table is open; link-only tables stay private.
+    online: isOnline(token), tableCode: t && !t.settings.private ? t.code : null,
+    tableType: t && !t.settings.private ? t.type : null,
   };
 }
 

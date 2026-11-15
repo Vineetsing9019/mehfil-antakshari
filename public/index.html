@@ -106,7 +106,12 @@
       </div>
 
       <div class="card slim">
-        <h2 class="row-title" id="singers-title">Singers</h2>
+        <div class="singers-head"><h2 class="row-title" id="singers-title">Singers</h2>
+          <button class="btn btn-text btn-sm" data-act="find-friend" id="find-btn">🔍 Find a friend</button></div>
+        <div class="find" id="find" hidden>
+          <input id="find-q" placeholder="Friend's name or @username" autocomplete="off" aria-label="Find a friend by name">
+          <div id="find-list"></div>
+        </div>
         <div class="stories" id="ai-people"></div>
       </div>
 
