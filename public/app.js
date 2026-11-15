@@ -986,7 +986,7 @@ function showOver() {
   const winnerName = v.winnerTeam ? (v.winnerTeam === 'tie' ? 'A tie!' : `Team ${v.winnerTeam} wins!`) : `${v.members.find(m => m.token === v.winnerToken)?.name || 'Someone'} wins!`;
   const mine = v.winnerToken === S.token;
   modal(`<div class="trophy">🏆</div><h3>${mine ? 'You won the mehfil!' : esc(winnerName)}</h3>
-    <p>${v.trail.filter(t => t.song).length} songs sung</p>
+    <p>${v.trail.filter(t => t.song).length} song${v.trail.filter(t => t.song).length === 1 ? '' : 's'} sung</p>
     ${v.trail.some(t => t.song) ? `<ol class="recap">${v.trail.filter(t => t.song).slice(-12).map(t => `<li>🎵 ${esc(t.song)} <span class="muted">· ${esc(v.members.find(m => m.token === t.by)?.name.split(' ')[0] || '')}</span></li>`).join('')}</ol>` : ''}
     ${v.crowdFav ? `<p>🎉 Crowd favourite: <b>${esc(v.members.find(m => m.token === v.crowdFav)?.name || '')}</b></p>` : ''}
     <div class="board">${ranked.map((p, i) => `<div class="${p.token === v.winnerToken ? 'win' : ''}"><span>${i + 1}.</span>${av(p)}<span class="n">${esc(p.name)}${p.team ? ' · ' + p.team : ''}</span><b>${p.score}</b></div>`).join('')}</div>
@@ -1185,7 +1185,7 @@ const ACT = {
   'share-result': () => {
     const v = S.table; if (!v) return;
     const winner = v.winnerToken === S.token ? 'I won' : `${v.members.find(m => m.token === v.winnerToken)?.name || 'Someone'} won`;
-    shareLink(`${winner} a round of Antakshari on Mehfil! 🎤 ${v.trail.filter(t => t.song).length} songs sung. Play with me:`, `${location.origin}/?t=${v.code}`);
+    shareResult(v, `${winner} a round of Antakshari on Mehfil! 🎤 ${v.trail.filter(t => t.song).length} songs sung. Play with me:`, `${location.origin}/?t=${v.code}`);
   },
   profile: arg => openProfile(arg),
   'profile-me': () => openProfile(S.token),
@@ -1260,6 +1260,70 @@ const ACT = {
 };
 // Phones with a share sheet get it (WhatsApp, Instagram, SMS…); others go straight to WhatsApp.
 const inviteLabel = () => (navigator.share ? 'Invite friends' : 'Invite on WhatsApp');
+// A picture of the result (1080x1350, the size Instagram and WhatsApp status use), drawn in the browser.
+function loadImg(src) { return new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; }); }
+async function resultCard(v) {
+  const W = 1080, H = 1350, c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const bg = g.createRadialGradient(200, 100, 50, 540, 600, 1100);
+  bg.addColorStop(0, '#4a1466'); bg.addColorStop(.55, '#1e0b33'); bg.addColorStop(1, '#12061f');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  const gold = g.createLinearGradient(0, 0, W, 0);
+  gold.addColorStop(0, '#ffc145'); gold.addColorStop(.6, '#ff8a1f'); gold.addColorStop(1, '#ff4f9a');
+  // header: logo and name
+  const logo = await loadImg('/icon-192.png');
+  if (logo) g.drawImage(logo, 80, 70, 110, 110);
+  g.fillStyle = gold; g.font = '64px "Yatra One", serif'; g.textBaseline = 'middle';
+  g.fillText('मेहफ़िल', 215, 128);
+  // winner
+  const winner = v.winnerTeam ? (v.winnerTeam === 'tie' ? 'A tie!' : `Team ${v.winnerTeam} wins!`) : `${v.members.find(m => m.token === v.winnerToken)?.name || 'Someone'} wins!`;
+  g.textAlign = 'center';
+  g.font = '150px serif'; g.fillText('🏆', W / 2, 330);
+  g.fillStyle = '#fff6e9'; g.font = '700 74px Poppins, sans-serif';
+  g.fillText(winner.length > 22 ? winner.slice(0, 21) + '…' : winner, W / 2, 470);
+  const songs = v.trail.filter(t => t.song);
+  g.fillStyle = '#c3b2d6'; g.font = '500 40px Poppins, sans-serif';
+  g.fillText(`${songs.length} song${songs.length === 1 ? '' : 's'} sung · Antakshari`, W / 2, 545);
+  // scores
+  const ranked = [...v.members].sort((a, b) => b.score - a.score).slice(0, 4);
+  g.textAlign = 'left';
+  ranked.forEach((m, i) => {
+    const y = 640 + i * 96;
+    g.fillStyle = i === 0 ? 'rgba(255,193,69,.16)' : 'rgba(0,0,0,.28)';
+    g.beginPath(); g.roundRect(140, y - 40, 800, 80, 22); g.fill();
+    g.fillStyle = i === 0 ? '#ffc145' : '#fff6e9'; g.font = '600 40px Poppins, sans-serif';
+    g.fillText(`${i === 0 ? '👑' : i + 1 + '.'}  ${m.name}${m.bot ? '  (AI)' : ''}`, 175, y + 2);
+    g.textAlign = 'right'; g.fillText(String(m.score), 905, y + 2); g.textAlign = 'left';
+  });
+  // a few songs
+  g.textAlign = 'center'; g.fillStyle = '#c3b2d6'; g.font = '400 34px Poppins, sans-serif';
+  const songsTop = 640 + ranked.length * 96 + 50;
+  songs.slice(-3).forEach((t, i) => g.fillText(`🎵 ${t.song}`, W / 2, songsTop + i * 52));
+  // footer
+  g.fillStyle = gold; g.font = '600 38px Poppins, sans-serif';
+  g.fillText('Play with me on Mehfil', W / 2, 1255);
+  g.fillStyle = '#c3b2d6'; g.font = '400 30px Poppins, sans-serif';
+  g.fillText(location.host, W / 2, 1300);
+  return new Promise(res => c.toBlob(res, 'image/jpeg', 0.9));
+}
+async function shareResult(v, text, url) {
+  try {
+    const blob = await resultCard(v);
+    const file = blob && new File([blob], 'mehfil-result.jpg', { type: 'image/jpeg' });
+    if (file && navigator.canShare?.({ files: [file] })) return await navigator.share({ files: [file], text: text + ' ' + url, title: 'Mehfil' });
+    if (blob) { // no picture sharing here: save the picture, and share the link as usual
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = 'mehfil-result.jpg'; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toast('Result picture saved 📸');
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return; // the person closed the share sheet: do nothing more
+    /* picture sharing not supported here: fall back to the link */
+  }
+  return shareLink(text, url);
+}
 function shareLink(text, url) {
   if (navigator.share) return navigator.share({ title: 'Mehfil', text, url }).catch(() => {});
   window.open(`https://wa.me/?text=${encodeURIComponent(text + ' ' + url)}`, '_blank', 'noopener');
