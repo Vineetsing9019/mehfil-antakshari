@@ -30,8 +30,8 @@ sounds like a group phone call. The server only passes the setup messages betwee
 - On mobile data, phones often can't reach each other directly, so a relay server (TURN) is used.
 - **Video** uses a second slot next to the audio slot, set up with the call, so turning a camera on or off never
   disturbs the voice. Video is small and smooth for phones (about 320x240, 15 frames a second, 300 kbps).
-- **Video safety rules are enforced by the server**, not just the page: cameras start off, are refused at open tables,
-  are limited to 4 per table, and all turn off if the host makes the table public.
+- **Video rules:** cameras start off and the server allows at most 4 per table. At an open table the app asks first
+  ("anyone who joins can see you"); at a link-only table the camera turns on straight away.
 
 ## 3. AI singers
 
@@ -68,7 +68,7 @@ the first screen is ready in **about 0.8 s on a first visit and 0.4 s on later v
 
 ## 6. How it is tested
 
-- **Server checks** (`npm test`, 80 checks): the test starts its own server on a spare port with throwaway data,
+- **Server checks** (`npm test`, 79 checks): the test starts its own server on a spare port with throwaway data,
   connects several fake players and plays real flows: joining by link, votes, lives, AI singers, skip,
   invites during a game, link-only tables, the bad-word filter, badges, the daily challenge, the QR code.
 - **Browser checks** (`npm run e2e`, 115 checks): headless Chrome at phone size, with a fake microphone.

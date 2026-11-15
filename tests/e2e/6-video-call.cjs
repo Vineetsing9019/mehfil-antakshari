@@ -48,19 +48,21 @@ const tiles = p => p.$$eval('#vids .vtile', els => els.map(e => { const v = e.qu
   await A.$eval('[data-act=start-jam]', e => e.click());
   await A.waitForSelector('#screen-table:not([hidden])');
   await wait(500);
-  check('no Video button at an open table', await A.$eval('#dock-cam', e => e.hidden));
-  await A.$eval('[data-act=sheet][data-arg=settings]', e => e.click()); await wait(200);
-  await A.$eval('[data-act=toggle-private]', e => e.click()); await wait(400);
-  await A.$eval('[data-act=sheet-close]', e => e.click()); await wait(200);
-  check('Video button appears once the table is link-only', !(await A.$eval('#dock-cam', e => e.hidden)));
+  check('Video button is there at an open table too', !(await A.$eval('#dock-cam', e => e.hidden)));
   const code = await A.$eval('#t-code', e => e.textContent.trim());
   await signUp(B, 'Bunty', `/?t=${code}`);
   await B.waitForSelector('#screen-table:not([hidden])');
   await wait(5000); // the voice call connects
   check('cameras are off until someone turns theirs on', (await tiles(A)).length === 0 && (await tiles(B)).length === 0);
 
-  await A.$eval('#dock-cam', e => e.click());
-  await B.$eval('#dock-cam', e => e.click());
+  // at an open table, each person is asked first
+  for (const [n, p] of [['Anjali', A], ['Bunty', B]]) {
+    await p.$eval('#dock-cam', e => e.click()); await wait(300);
+    const ask = await p.$eval('#modal-root', e => e.innerText).catch(() => '');
+    check(`${n} is asked before the camera turns on at an open table`, ask.includes('anyone who joins can see you'), ask.split('\n')[0]);
+    if (n === 'Anjali') await p.screenshot({ path: OUT_DIR + 'video-ask.png' });
+    await p.$eval('#modal-root [data-act=cam-yes]', e => e.click());
+  }
   let a = [], b = [];
   for (let i = 0; i < 30; i++) {
     await wait(300);
@@ -93,12 +95,14 @@ const tiles = p => p.$$eval('#vids .vtile', els => els.map(e => { const v = e.qu
   for (let i = 0; i < 20 && (await tiles(A)).length !== 1; i++) await wait(200);
   check('turning a camera off removes its tile for everyone', (await tiles(A)).length === 1 && (await tiles(B)).length === 1);
 
-  // making the table public turns every camera off
+  // at a link-only table the camera turns on without the question
   await A.$eval('[data-act=sheet][data-arg=settings]', e => e.click()); await wait(200);
-  await A.$eval('[data-act=toggle-private]', e => e.click()); await wait(600);
+  await A.$eval('[data-act=toggle-private]', e => e.click()); await wait(500);
   await A.$eval('[data-act=sheet-close]', e => e.click()).catch(() => {});
-  const camLive = await A.evaluate(() => [...document.querySelectorAll('#vids video')].length);
-  check('making the table public turns cameras off and hides Video', camLive === 0 && await A.$eval('#dock-cam', e => e.hidden));
+  await B.$eval('#dock-cam', e => e.click()); await wait(300);
+  const asked = await B.$('#modal-root [data-act=cam-yes]');
+  for (let i = 0; i < 20 && (await tiles(A)).length !== 2; i++) await wait(200);
+  check('at a link-only table the camera turns on straight away', !asked && (await tiles(A)).length === 2);
 
   check('no page errors', errors.length === 0, errors.join(' || '));
   await browser.close();

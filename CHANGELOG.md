@@ -2,6 +2,10 @@
 
 Newest first. Every change is also in the [commit history](https://github.com/Vineetsing9019/mehfil-antakshari/commits/main).
 
+## 15 November 2026 (late night)
+
+- **Video at every table.** Anyone can turn their camera on (still off by default, at most 4 cameras). At an open table you are asked first, because anyone who joins can see you; at link-only tables it turns on straight away.
+
 ## 15 November 2026 (night)
 
 - **Fixed: signing up did nothing on the live site** when you pressed "Let's sing" before the connection was ready (the name was sent before the app said hello to the server, so the server ignored it). Every action now waits until the server has answered, then goes in order. Same fix for pressing Play now right after opening the app.

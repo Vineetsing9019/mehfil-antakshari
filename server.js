@@ -751,7 +751,6 @@ io.on('connection', socket => {
   socket.on('table:settings', (p = {}) => {
     const t = myTable();
     if (!t || t.hostToken !== token) return;
-    if (typeof p.settings?.private === 'boolean' && !p.settings.private) t.members.forEach(m => { m.cam = false; });
     if (typeof p.settings?.private === 'boolean' && (t.type === 'jam' || t.state === 'playing')) {
       t.settings.private = p.settings.private;
       pushTable(t); pushLobby();
@@ -814,13 +813,12 @@ io.on('connection', socket => {
     toast('Asked the host for a rematch');
   });
 
-  // Video: off by default, only at link-only tables (never with strangers), at most CAM_MAX cameras.
+  // Video: off by default, at any table, at most CAM_MAX cameras. (At open tables the app asks the person first.)
   socket.on('cam', (p = {}, ack) => {
     const t = myTable(), m = t && memberOf(t, token);
     const answer = ok => { if (typeof ack === 'function') ack(ok); };
     if (!m) return answer(false);
     if (!p.on) { m.cam = false; pushTable(t); return answer(true); }
-    if (!t.settings.private) { toast('Video works at link-only tables. Turn on "Link only" in Settings first.'); return answer(false); }
     if (!m.cam && [...t.members.values()].filter(x => x.cam).length >= CAM_MAX) { toast(`Up to ${CAM_MAX} people can be on video`); return answer(false); }
     m.cam = true;
     pushTable(t);

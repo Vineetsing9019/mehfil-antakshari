@@ -904,7 +904,7 @@ function renderDock() {
   }
   const cam = $('#dock-cam');
   if (cam) {
-    cam.hidden = !v.settings.private;
+    cam.hidden = false;
     cam.classList.toggle('on', !!S.camOn);
     cam.querySelector('span').textContent = S.camOn ? 'Video on' : 'Video';
   }
@@ -930,7 +930,7 @@ function membersHtml(v) {
 
 function settingsHtml(v) {
   const s = v.settings;
-  const privacy = (v.isHost ? `<label class="switch">Link only (hide from Open tables) <input type="checkbox" ${s.private ? 'checked' : ''} data-act="toggle-private" aria-label="Link only"></label><p class="muted setnote">${s.private ? '📷 Video is on for this table: tap Video in the bar below (up to 4 cameras).' : '📷 Turn on Link only to use video, so only people you invited can see you.'}</p>` : '')
+  const privacy = (v.isHost ? `<label class="switch">Link only (hide from Open tables) <input type="checkbox" ${s.private ? 'checked' : ''} data-act="toggle-private" aria-label="Link only"></label><p class="muted setnote">${s.private ? '📷 Link only: only people you invited can join and see video.' : '📷 Open table: anyone who joins can see video. Turn on Link only for family and friends.'}</p>` : '')
     + (v.isHost && v.type === 'game' ? `<span class="lbl">AI singers</span><div class="chips">${[['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']].map(([k, l]) => `<button class="chip ${(s.botLevel || 'normal') === k ? 'on' : ''}" data-act="set" data-arg="botLevel=${k}">${l}</button>`).join('')}</div>` : '');
   if (v.type === 'jam') return privacy + '<p class="muted">Sing together has no game settings. Everyone talks, and the queue is on the main screen.</p>';
   if (!v.isHost || v.state === 'playing') {
@@ -1172,7 +1172,7 @@ async function camOn() {
   S.peers.forEach(p => p.vtr?.sender.replaceTrack(S.camTrack).catch(() => {}));
   send('cam', { on: true }, ok => {
     S.camPending = false;
-    if (ok) toast('Your camera is on. Only people at this table can see you.');
+    if (ok) toast(S.table?.settings.private ? 'Your camera is on. Only people you invited can see you.' : 'Your camera is on. People at this table can see you.');
     else camOff(false);
   });
   syncVideos(); renderDock();
@@ -1276,7 +1276,15 @@ const ACT = {
     <div class="az">${'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(l => `<button class="chip ${S.pickedLetter === l ? 'on' : ''}" data-act="set-letter" data-arg="${l}">${l}</button>`).join('')}</div>
     <div class="row"><button class="btn btn-text btn-sm" data-act="set-letter" data-arg="">Use the song's last letter</button></div>`),
   'set-letter': arg => { S.pickedLetter = arg || null; closeModal(); renderAction(); $('#in-song')?.focus({ preventScroll: true }); },
-  cam: () => { if (S.camOn) camOff(); else camOn(); },
+  cam: () => {
+    if (S.camOn) return camOff();
+    if (S.table && !S.table.settings.private) {
+      return modal(`<h3>Turn on video?</h3><p>This table is open, so anyone who joins can see you. For family and friends only, turn on "Link only" in Settings.</p>
+        <div class="row"><button class="btn btn-primary" data-act="cam-yes">Turn on video</button><button class="btn btn-text" data-act="close">Not now</button></div>`);
+    }
+    camOn();
+  },
+  'cam-yes': () => { closeModal(); camOn(); },
   'skip-bot': () => { S.singId++; window.speechSynthesis?.cancel(); musicBed(false); send('turn:skipbot'); },
   rematch: () => { send('rematch'); closeModal(); },
   daily: () => send('table:quick', { daily: true }),
