@@ -7,7 +7,7 @@ const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application
 const BASE = process.env.URL || 'http://localhost:5090';
 // Plays a quick game to the end, presses Share, and saves the result picture the app made.
 const fs = require('fs');
-const puppeteer = require('puppeteer-core');
+const puppeteer = require('./quiet.cjs');
 const OUT = OUT_DIR;
 const wait = ms => new Promise(r => setTimeout(r, ms));
 (async () => {

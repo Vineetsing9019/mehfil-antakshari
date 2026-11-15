@@ -6,7 +6,7 @@ require('fs').mkdirSync(OUT_DIR, { recursive: true });
 const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const BASE = process.env.URL || 'http://localhost:5090';
 // Browser checks for items 58-75, invite by name, and "leaving stops the AI singer".
-const puppeteer = require('puppeteer-core');
+const puppeteer = require('./quiet.cjs');
 const OUT = OUT_DIR;
 const URL = BASE;
 const wait = ms => new Promise(r => setTimeout(r, ms));

@@ -2,6 +2,13 @@
 
 Newest first. Every change is also in the [commit history](https://github.com/Vineetsing9019/mehfil-antakshari/commits/main).
 
+## 15 November 2026 (night)
+
+- **Fixed: signing up did nothing on the live site** when you pressed "Let's sing" before the connection was ready (the name was sent before the app said hello to the server, so the server ignored it). Every action now waits until the server has answered, then goes in order. Same fix for pressing Play now right after opening the app.
+- New browser check on a slow connection catches this; it failed on the old live site and passes now.
+- Test browsers run muted.
+- 80 server checks and 115 browser checks, all passing.
+
 ## 15 November 2026 (evening)
 
 - **Find a friend** on home: type a name or @username to see who is online, then Invite them, or Join them if they are at an open table.

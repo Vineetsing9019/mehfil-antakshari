@@ -6,7 +6,7 @@ const OUT_DIR = require('path').join(__dirname, 'out') + '/';
 require('fs').mkdirSync(OUT_DIR, { recursive: true });
 const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const BASE = process.env.URL || 'http://localhost:5090';
-const puppeteer = require('puppeteer-core');
+const puppeteer = require('./quiet.cjs');
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const check = (name, ok, detail = '') => console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  (' + detail + ')' : ''}`);
 

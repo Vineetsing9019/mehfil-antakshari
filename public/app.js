@@ -277,16 +277,28 @@ if (!navigator.onLine || typeof io !== 'function') {
   $('#netbar').hidden = false;
 }
 if (typeof io !== 'function') window.addEventListener('online', () => location.reload());
+// Actions wait here until the server has answered "hello" (it needs to know who is asking first).
+S.ready = false; S.outbox = [];
+function send(...args) {
+  if (S.ready) socket.emit(...args);
+  else S.outbox.push(args);
+}
+function flushOutbox() {
+  S.ready = true;
+  const queued = S.outbox.splice(0);
+  queued.forEach(args => socket.emit(...args));
+}
 socket.on('connect', () => { $('#netbar').hidden = true; socket.emit('hello', { token: S.token }); });
-socket.on('disconnect', () => { $('#netbar').hidden = false; });
+socket.on('disconnect', () => { S.ready = false; $('#netbar').hidden = false; });
 socket.on('me', m => {
+  setTimeout(flushOutbox, 0);
   S.me = m.profile; S.named = m.named;
   if (!S.named) store.set('ak-me', '');
   remember();
   renderMe();
   if (!S.named) { showJoin(); return; }
   if (!S.table) showLobby();
-  if (S.pendingCode) { socket.emit('table:join', { code: S.pendingCode }); S.pendingCode = null; history.replaceState({}, '', '/'); }
+  if (S.pendingCode) { send('table:join', { code: S.pendingCode }); S.pendingCode = null; history.replaceState({}, '', '/'); }
   if (S.pendingHandle) { const h = S.pendingHandle; S.pendingHandle = null; history.replaceState({}, '', '/'); openProfileByHandle(h); }
 });
 socket.on('profile:saved', m => {
@@ -294,7 +306,7 @@ socket.on('profile:saved', m => {
   S.me = m.profile; S.named = true; renderMe(); closeModal();
   if (editing) toast('Profile saved ✓');
   if (!S.table) showLobby();
-  if (S.pendingCode) { socket.emit('table:join', { code: S.pendingCode }); S.pendingCode = null; history.replaceState({}, '', '/'); }
+  if (S.pendingCode) { send('table:join', { code: S.pendingCode }); S.pendingCode = null; history.replaceState({}, '', '/'); }
 });
 socket.on('profile:deleted', () => {
   S.named = false; S.me = null; S.table = null; renderMe(); closeModal();
@@ -1132,13 +1144,13 @@ function makePeer(tok, initiator) {
     applyMuting();
     audio.play().catch(() => { S.audioBlocked = true; renderTable(); });
   };
-  pc.onicecandidate = e => { if (e.candidate) socket.emit('rtc', { to: tok, data: { candidate: e.candidate } }); };
+  pc.onicecandidate = e => { if (e.candidate) send('rtc', { to: tok, data: { candidate: e.candidate } }); };
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === 'failed') closePeer(tok);
     updateVoiceStatus();
   };
   S.peers.set(tok, p);
-  if (initiator) pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => socket.emit('rtc', { to: tok, data: { sdp: pc.localDescription } })).catch(() => {});
+  if (initiator) pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => send('rtc', { to: tok, data: { sdp: pc.localDescription } })).catch(() => {});
   return p;
 }
 // Small, smooth video that phones can carry: about 320x240 at 15 frames a second.
@@ -1158,7 +1170,7 @@ async function camOn() {
   } catch { toast('The camera is blocked or missing. Allow it in your browser to use video.'); return; }
   S.camOn = true; S.camPending = true;
   S.peers.forEach(p => p.vtr?.sender.replaceTrack(S.camTrack).catch(() => {}));
-  socket.emit('cam', { on: true }, ok => {
+  send('cam', { on: true }, ok => {
     S.camPending = false;
     if (ok) toast('Your camera is on. Only people at this table can see you.');
     else camOff(false);
@@ -1169,7 +1181,7 @@ function camOff(tell = true) {
   S.camTrack?.stop();
   S.camTrack = null; S.camStream = null; S.camOn = false; S.camPending = false;
   S.peers.forEach(p => p.vtr?.sender.replaceTrack(null).catch(() => {}));
-  if (tell) socket.emit('cam', { on: false });
+  if (tell) send('cam', { on: false });
   syncVideos(); renderDock();
 }
 // Video tiles above the stage, one per person whose camera is on. Tiles are kept (not redrawn) so video never flickers.
@@ -1226,7 +1238,7 @@ async function handleRtc(from, data) {
         p.vtr = pc.getTransceivers().find(t => t.receiver.track?.kind === 'video') || null;
         if (p.vtr) { p.vtr.direction = 'sendrecv'; if (S.camTrack) p.vtr.sender.replaceTrack(S.camTrack).catch(() => {}); capVideo(p.vtr); }
         await pc.setLocalDescription(await pc.createAnswer());
-        socket.emit('rtc', { to: from, data: { sdp: pc.localDescription } });
+        send('rtc', { to: from, data: { sdp: pc.localDescription } });
       }
       for (const c of p.queue.splice(0)) await pc.addIceCandidate(c).catch(() => {});
     } else if (data.candidate) {
@@ -1240,14 +1252,14 @@ async function handleRtc(from, data) {
 function joinCode(code) {
   const c = String(code || '').trim().toUpperCase();
   if (!c) return toast('Type the table code first');
-  socket.emit('table:join', { code: c });
+  send('table:join', { code: c });
 }
 const ACT = {
-  'quick-play': () => socket.emit('table:quick'),
-  'start-game': () => socket.emit('table:create', { type: 'game' }),
-  'start-jam': () => socket.emit('table:create', { type: 'jam' }),
-  'add-bot': () => socket.emit('table:addbot'),
-  'toggle-private': () => socket.emit('table:settings', { settings: { private: !S.table.settings.private } }),
+  'quick-play': () => send('table:quick'),
+  'start-game': () => send('table:create', { type: 'game' }),
+  'start-jam': () => send('table:create', { type: 'jam' }),
+  'add-bot': () => send('table:addbot'),
+  'toggle-private': () => send('table:settings', { settings: { private: !S.table.settings.private } }),
   'chat-profile': arg => { closeSheet(); openProfile(arg); },
   board: () => modal('<h3>🏆 This week</h3><ol class="board-list">' + boardHtml() + '</ol><div class="row"><button class="btn btn-primary" data-act="close">OK</button></div>'),
   howto: () => modal('<h3>How to play</h3><ol class="howto"><li>Sing a song that starts with the big letter.</li><li>Type its name. Its last letter goes to the next singer.</li><li>Everyone votes. Last singer standing wins.</li></ol><div class="row"><button class="btn btn-primary" data-act="close">Got it</button></div>'),
@@ -1259,15 +1271,15 @@ const ACT = {
     if (!f.hidden) { renderFindList(); $('#find-q').focus(); }
   },
   'all-tables': () => modal(`<h3>Open tables</h3><div class="tlist">${S.lobby.tables.map(tableCard).join('')}</div><div class="row"><button class="btn btn-text btn-sm" data-act="close">Close</button></div>`),
-  req: arg => { socket.emit('invite', { token: arg }); S.sent.add(arg); closeModal(); if (!S.table) renderLobby(); else renderInviteList(); },
+  req: arg => { send('invite', { token: arg }); S.sent.add(arg); closeModal(); if (!S.table) renderLobby(); else renderInviteList(); },
   'pick-letter': () => modal(`<h3>Next letter</h3><p>Pick the letter the next singer starts with.</p>
     <div class="az">${'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(l => `<button class="chip ${S.pickedLetter === l ? 'on' : ''}" data-act="set-letter" data-arg="${l}">${l}</button>`).join('')}</div>
     <div class="row"><button class="btn btn-text btn-sm" data-act="set-letter" data-arg="">Use the song's last letter</button></div>`),
   'set-letter': arg => { S.pickedLetter = arg || null; closeModal(); renderAction(); $('#in-song')?.focus({ preventScroll: true }); },
   cam: () => { if (S.camOn) camOff(); else camOn(); },
-  'skip-bot': () => { S.singId++; window.speechSynthesis?.cancel(); musicBed(false); socket.emit('turn:skipbot'); },
-  rematch: () => { socket.emit('rematch'); closeModal(); },
-  daily: () => socket.emit('table:quick', { daily: true }),
+  'skip-bot': () => { S.singId++; window.speechSynthesis?.cancel(); musicBed(false); send('turn:skipbot'); },
+  rematch: () => { send('rematch'); closeModal(); },
+  daily: () => send('table:quick', { daily: true }),
   'nudge-off': () => { store.set('ak-photo-nudge', 'off'); renderLobby(); },
   install: () => { const p = S.installPrompt; S.installPrompt = null; store.set('ak-install', 'off'); closeModal(); p?.prompt(); },
   mute: arg => {
@@ -1309,19 +1321,19 @@ const ACT = {
   'copy-profile': () => copy(`${location.origin}/?u=${S.me.handle}`, 'Profile link copied'),
   'save-profile': () => saveProfile(),
   'delete-profile': () => modal(`<h3>Delete your profile?</h3><p>Your name, username, photos and stats are removed from Mehfil. This can't be undone.</p><div class="row"><button class="btn btn-primary" data-act="close">Keep it</button><button class="btn btn-line" data-act="delete-yes">Delete</button></div>`),
-  'delete-yes': () => { socket.emit('profile:delete'); },
+  'delete-yes': () => { send('profile:delete'); },
   close: () => closeModal(),
   seed: arg => { if (S.form) { S.form.draft.defaultSeed = arg; renderProfileForm(S.form.sel, { mode: S.form.mode, draft: S.form.draft }); } },
   'no-photo': () => { if (S.form) { S.form.draft.photo = null; S.form.draft.photoChanged = true; renderProfileForm(S.form.sel, { mode: S.form.mode, draft: S.form.draft }); } },
   'rm-post': arg => { if (S.form) { S.form.draft.posts.splice(Number(arg), 1); S.form.draft.postsChanged = true; renderProfileForm(S.form.sel, { mode: S.form.mode, draft: S.form.draft }); } },
   lightbox: arg => modal(`<div class="lightbox"><img src="${esc(arg)}" alt=""></div>`),
-  follow: arg => socket.emit('follow', { token: arg }),
-  block: arg => { socket.emit('block', { token: arg }); closeModal(); },
+  follow: arg => send('follow', { token: arg }),
+  block: arg => { send('block', { token: arg }); closeModal(); },
   report: arg => modal(`<h3>Report this singer</h3><p>What's wrong?</p><div class="chips">${['Rude or abusive', 'Inappropriate photo', 'Spam or fake', 'Other'].map(r => `<button class="chip" data-act="report-send" data-arg="${esc(arg)}|${r}">${r}</button>`).join('')}</div><div class="row"><button class="btn btn-text" data-act="close">Cancel</button></div>`),
-  'report-send': arg => { const [tok, reason] = arg.split('|'); socket.emit('report', { token: tok, reason }); closeModal(); },
+  'report-send': arg => { const [tok, reason] = arg.split('|'); send('report', { token: tok, reason }); closeModal(); },
   privacy: () => modal(`<h3>Privacy</h3><p>Mehfil stores your name, username, city, bio, photos, singing stats and reports. Others can see your name, username, city, bio, photos and stats. Use "Delete my profile" on your profile to remove them.</p><div class="row"><button class="btn btn-primary" data-act="close">OK</button></div>`),
-  'invite-yes': arg => { socket.emit('invite:respond', { fromToken: arg, accept: true }); S.invites.shift(); closeModal(); if (S.invites.length) renderInvite(); },
-  'invite-no': arg => { socket.emit('invite:respond', { fromToken: arg, accept: false }); S.invites.shift(); closeModal(); if (S.invites.length) renderInvite(); },
+  'invite-yes': arg => { send('invite:respond', { fromToken: arg, accept: true }); S.invites.shift(); closeModal(); if (S.invites.length) renderInvite(); },
+  'invite-no': arg => { send('invite:respond', { fromToken: arg, accept: false }); S.invites.shift(); closeModal(); if (S.invites.length) renderInvite(); },
   leave: () => {
     // Leaving in the middle of a game loses your seat, so ask first.
     const v = S.table, me = v && myMember(v);
@@ -1332,26 +1344,26 @@ const ACT = {
     }
     ACT['leave-yes']();
   },
-  'leave-yes': () => { closeModal(); socket.emit('table:leave'); leaveLocal(); },
-  start: () => socket.emit('table:start'),
+  'leave-yes': () => { closeModal(); send('table:leave'); leaveLocal(); },
+  start: () => send('table:start'),
   set: arg => {
     const [k, raw] = arg.split('=');
     const val = ['theme', 'lang', 'voice', 'botLevel'].includes(k) ? raw : Number(raw);
-    socket.emit('table:settings', { settings: { [k]: val } });
+    send('table:settings', { settings: { [k]: val } });
   },
-  'toggle-teams': () => socket.emit('table:settings', { settings: { teams: !S.table.settings.teams } }),
-  kick: arg => { if (confirm('Remove this singer from the table?')) socket.emit('table:kick', { token: arg }); },
+  'toggle-teams': () => send('table:settings', { settings: { teams: !S.table.settings.teams } }),
+  kick: arg => { if (confirm('Remove this singer from the table?')) send('table:kick', { token: arg }); },
   'song-done': () => {
     const song = $('#in-song')?.value || '';
-    socket.emit('turn:done', { song, lastWord: S.pickedLetter || song.trim().split(/\s+/).pop() || '' });
+    send('turn:done', { song, lastWord: S.pickedLetter || song.trim().split(/\s+/).pop() || '' });
     S.draft = {}; S.pickedLetter = null;
     store.set('ak-tut', 'seen');
   },
-  pass: () => socket.emit('turn:pass'),
-  hint: () => socket.emit('turn:hint'),
-  vote: arg => socket.emit('vote', { vote: arg }),
-  quick: arg => socket.emit('chat', { text: arg }),
-  react: arg => { socket.emit('react', { emoji: arg }); const t = $('#react-tray'); if (t) t.hidden = true; },
+  pass: () => send('turn:pass'),
+  hint: () => send('turn:hint'),
+  vote: arg => send('vote', { vote: arg }),
+  quick: arg => send('chat', { text: arg }),
+  react: arg => { send('react', { emoji: arg }); const t = $('#react-tray'); if (t) t.hidden = true; },
   'react-tray': () => toggleTray(),
   'mic-dock': () => { const v = S.table; if (v && callModeOf(v)) ACT.mic(); else toast("In turns mode only the singer's mic is on"); },
   sheet: arg => openSheet(arg),
@@ -1359,8 +1371,8 @@ const ACT = {
   mic: () => { S.micOn = !S.micOn; ensureMic().then(applyMic); renderAction(); renderDock(); },
   'mic-retry': () => { retryMic().then(() => { applyMic(); renderTable(); }); },
   hear: () => { S.audioBlocked = false; S.peers.forEach(p => p.audio.play().catch(() => {})); renderTable(); },
-  stage: () => socket.emit('stage:take'),
-  'queue-next': () => socket.emit('queue:next'),
+  stage: () => send('stage:take'),
+  'queue-next': () => send('queue:next'),
   'mic-test': () => micTest(),
   music: () => {
     if (S.amb) stopAmbience(); else startAmbience();
@@ -1455,7 +1467,8 @@ function saveProfile() {
   if (!payload.name) { toast('Type your name first'); $(f.sel + ' [data-f=name]')?.focus(); return; }
   if (d.photoChanged) payload.photo = d.photo;
   if (d.postsChanged) payload.posts = d.posts;
-  socket.emit('profile:update', payload);
+  if (!S.ready) { const b = $(f.sel + ' [data-act=save-profile]'); if (b) b.textContent = 'Connecting…'; }
+  send('profile:update', payload);
 }
 function micTest() {
   S.micTesting = true;
@@ -1495,12 +1508,12 @@ document.addEventListener('submit', e => {
   if (form === 'join-code') joinCode($('#code-in').value);
   if (form === 'chat') {
     const text = $('#chat-in').value.trim();
-    if (text) socket.emit('chat', { text });
+    if (text) send('chat', { text });
     $('#chat-in').value = '';
   }
   if (form === 'queue') {
     const title = $('#q-in').value.trim();
-    if (title) socket.emit('queue:add', { title });
+    if (title) send('queue:add', { title });
     $('#q-in').value = '';
   }
 });

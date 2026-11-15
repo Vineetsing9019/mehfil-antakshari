@@ -44,7 +44,7 @@ What changed and when: [CHANGELOG.md](CHANGELOG.md). How it works inside, and th
 | Voice and video | WebRTC peer-to-peer audio and video between players, STUN/TURN for mobile data |
 | Browser app | Plain JavaScript, HTML and CSS (no framework), Web Audio, Web Speech (AI voices and "say the song"), Canvas (result picture), View Transitions |
 | App features | Service worker (instant reopen and offline), web app manifest (install on phones) |
-| Tests | 80 server acceptance checks (`npm test`), 113 end-to-end checks in headless Chrome with Puppeteer (`npm run e2e`), including a two-person video call |
+| Tests | 80 server acceptance checks (`npm test`), 115 end-to-end checks in headless Chrome with Puppeteer (`npm run e2e`), including a two-person video call |
 
 ```mermaid
 flowchart LR
