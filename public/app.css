@@ -464,3 +464,29 @@ details.about{margin-top:16px;padding:0;background:none;border:0;text-align:cent
 details.about p{text-align:left;margin-top:8px}
 .join .sub{margin:4px 0 16px}
 .join .fine{margin-top:10px}
+
+/* v7: points, badges, daily challenge, photo nudge, say-the-title, recap, QR, invite by name */
+.points{position:absolute;left:50%;top:44%;transform:translate(-50%,0);z-index:6;font-size:30px;font-weight:800;color:var(--gold);text-shadow:0 0 22px rgba(255,193,69,.7);pointer-events:none;animation:pointsup 1.6s ease-out forwards;white-space:nowrap}
+@keyframes pointsup{0%{opacity:0;transform:translate(-50%,10px) scale(.6)}20%{opacity:1;transform:translate(-50%,0) scale(1.1)}100%{opacity:0;transform:translate(-50%,-70px) scale(1)}}
+.badgepop{position:fixed;left:50%;top:22%;transform:translateX(-50%);z-index:75;display:flex;flex-direction:column;align-items:center;gap:2px;padding:18px 26px;border-radius:22px;background:linear-gradient(160deg,#3a145c,#1e0b33);border:1px solid rgba(255,193,69,.6);box-shadow:0 20px 60px rgba(0,0,0,.6),0 0 40px rgba(255,193,69,.25);animation:pop .5s ease;pointer-events:none}
+.badgepop span{font-size:44px}
+.badgepop b{color:var(--gold);font-size:13px;letter-spacing:.12em;text-transform:uppercase}
+.badgepop small{font-size:16px;font-weight:600}
+.daily{display:block;width:100%;margin:6px 0 2px;padding:10px 12px;border-radius:14px;border:1px dashed rgba(255,193,69,.45);background:rgba(255,193,69,.07);color:var(--text);font-size:14px;text-align:left;min-height:44px}
+.daily b{color:var(--gold)}
+.daily.done{border-style:solid;border-color:rgba(46,230,197,.35);background:rgba(46,230,197,.07);color:var(--muted)}
+.nudge{display:flex;align-items:center;gap:6px;margin-top:8px;padding:6px 6px 6px 12px;border-radius:14px;background:rgba(255,255,255,.05);font-size:13px;color:var(--muted)}
+.nudge .btn{margin-left:auto}
+.nudge .ico{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.06)}
+.songrow{display:flex;gap:8px;align-items:center}
+.songrow .song-in{flex:1}
+.micsay{flex:none;width:48px;height:48px;border-radius:50%;background:rgba(255,193,69,.14);border:1px solid rgba(255,193,69,.4);font-size:20px}
+.recap{list-style:none;margin:6px 0 14px;max-height:170px;overflow:auto;text-align:left;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.recap li{padding:6px 10px;border-radius:10px;background:rgba(0,0,0,.22)}
+.qr{display:block;margin:6px auto 10px;border-radius:14px;background:#fff;padding:8px}
+.bigcode{font-family:monospace;font-size:30px;letter-spacing:.25em;color:var(--gold)!important;font-weight:700}
+.invite-name{margin-bottom:14px}
+.invite-name input{width:100%;padding:11px 14px;border-radius:14px;border:1px solid var(--line);background:rgba(0,0,0,.25);min-height:44px;outline:none;margin-bottom:8px}
+.invite-name input:focus{border-color:var(--gold)}
+.invite-name .mrow{margin-bottom:6px}
+.inv-empty{text-align:center;padding:6px 0}

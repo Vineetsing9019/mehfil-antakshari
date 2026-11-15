@@ -9,6 +9,7 @@ const selfsigned = require('selfsigned');
 const { Server } = require('socket.io');
 const { makeBots, SONGS } = require('./bots');
 const { librarySongsFor, songPerformance } = require('./songlib');
+const QRCode = require('qrcode');
 
 const PORT = Number(process.env.PORT) || 5090; // localhost:5090, or the host's port
 const SECURE_PORT = 5443;                      // https for phones on this Wi-Fi (local only)
@@ -152,12 +153,7 @@ function publicPerson(token) {
   if (!p) return null;
   const t = tables.get(personTable.get(token));
   const status = !t ? 'free' : t.state === 'playing' ? 'playing' : t.type === 'jam' ? 'jam' : 'room';
-  const badges = [];
-  if (p.sung >= 1) badges.push('First song 🎤');
-  if (p.sung >= 10) badges.push('Ten songs 🔟');
-  if (p.wins >= 1) badges.push('Winner 🏆');
-  if (p.sung >= 3 && p.passes === 0) badges.push('Never passed ✨');
-  if ((p.days || []).length >= 5) badges.push('Regular 📅');
+  const badges = badgesOf(p);
   const bot = bots.has(token);
   return {
     token, bot, name: p.name, handle: p.handle, city: p.city || '', bio: p.bio || (bot ? '' : 'Singing on Antakshari 🎶'),
@@ -167,9 +163,30 @@ function publicPerson(token) {
     posts: bot ? [] : (p.posts || []).map((_, i) => `/p/${token}/post/${i}?v=${p.ver}`),
     sung: p.sung || 0, wins: p.wins || 0, followers: bot ? 0 : followersOf(token), badges, status,
     streak: bot ? 0 : streakOf(p.days),
+    daily: bot ? null : { letter: dailyLetter(), done: p.dailyDone === today() },
     online: isOnline(token), tableCode: t ? t.code : null,
   };
 }
+
+function badgesOf(p) {
+  const badges = [];
+  if (p.sung >= 1) badges.push('First song 🎤');
+  if (p.sung >= 10) badges.push('Ten songs 🔟');
+  if (p.wins >= 1) badges.push('Winner 🏆');
+  if (p.sung >= 3 && p.passes === 0) badges.push('Never passed ✨');
+  if ((p.days || []).length >= 5) badges.push('Regular 📅');
+  return badges;
+}
+// Tells a person about badges they have just earned, and sends their updated profile.
+function noteBadges(token, before) {
+  const p = people.get(token);
+  if (!p) return;
+  badgesOf(p).filter(b => !before.includes(b)).forEach(b => emitTo(token, 'badge', b));
+  emitTo(token, 'me:update', publicPerson(token));
+}
+
+// 72. Daily challenge: one letter a day for everyone.
+const dailyLetter = () => START_LETTERS[Math.floor(Date.now() / 86400000) % START_LETTERS.length];
 
 /* ---------- photo routes ---------- */
 function sendDataUrl(res, s) {
@@ -179,6 +196,16 @@ function sendDataUrl(res, s) {
 }
 app.get('/p/:token/photo', (req, res) => sendDataUrl(res, people.get(req.params.token)?.photo));
 app.get('/p/:token/post/:i', (req, res) => sendDataUrl(res, people.get(req.params.token)?.posts?.[Number(req.params.i)]));
+
+app.get('/qr/:code.svg', (req, res) => {
+  const code = String(req.params.code || '').toUpperCase();
+  if (!/^[A-Z2-9]{6}$/.test(code)) return res.sendStatus(404);
+  const origin = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+  QRCode.toString(`${origin}/?t=${code}`, { type: 'svg', margin: 1, color: { dark: '#12061f', light: '#ffffff' } }, (err, svg) => {
+    if (err) return res.sendStatus(500);
+    res.type('image/svg+xml').set('Cache-Control', 'max-age=3600').send(svg);
+  });
+});
 
 app.get('/leaderboard', (req, res) => {
   const wk = weekKey();
@@ -226,7 +253,7 @@ function createTable(type, hostToken, settings = {}) {
   const t = {
     code: newCode(), type, hostToken, members: new Map(), order: [],
     state: type === 'jam' ? 'jam' : 'lobby',
-    settings: { theme: 'classic', turnSec: 60, lives: 3, teams: false, lang: 'en', voice: 'call', private: false, ...pick(settings) },
+    settings: { theme: 'classic', turnSec: 60, lives: 3, teams: false, lang: 'en', voice: 'call', private: false, botLevel: 'normal', ...pick(settings) },
     letter: null, turnIdx: 0, turnEndsAt: null, timer: null, botTimer: null, verifyTimer: null, verifying: null,
     trail: [], chat: [], claps: 0, clapTotals: new Map(), winnerToken: null, winnerTeam: null, crowdFav: null,
     queue: [], nowPlaying: null, stage: null, botSong: null, botSing: null, createdAt: Date.now(),
@@ -243,6 +270,7 @@ function pick(s) {
   if (['turns', 'call'].includes(s.voice)) out.voice = s.voice;
   if (LANGS.includes(s.lang)) out.lang = s.lang;
   if (typeof s.private === 'boolean') out.private = s.private;
+  if (['easy', 'normal', 'hard'].includes(s.botLevel)) out.botLevel = s.botLevel;
   return out;
 }
 const turnMs = t => (t.settings.turnSec || 60) * 1000;
@@ -348,6 +376,8 @@ function viewFor(t, token) {
     queue: t.queue, nowPlaying: t.nowPlaying, stage: t.stage,
     winnerToken: t.winnerToken, winnerTeam: t.winnerTeam, crowdFav: t.crowdFav,
     quickChat: QUICK_CHAT, reactions: REACTIONS,
+    titles: t.state === 'playing' && currentToken(t) === token
+      ? [...librarySongsFor(t.letter, []).map(x => x.title), ...(SONGS[t.letter] || [])] : [],
   };
 }
 function pushTable(t) {
@@ -371,9 +401,10 @@ function startGame(t) {
     t.order = A.flatMap((x, i) => [x, B[i]]).filter(Boolean);
   } else t.order = singers;
   t.state = 'playing';
-  t.winnerToken = null; t.winnerTeam = null; t.crowdFav = null; t.clapTotals = new Map();
+  t.winnerToken = null; t.winnerTeam = null; t.crowdFav = null; t.clapTotals = new Map(); t.rematchAsked = null;
   t.trail = [];
-  t.letter = START_LETTERS[Math.floor(Math.random() * START_LETTERS.length)];
+  t.letter = t.forceLetter || START_LETTERS[Math.floor(Math.random() * START_LETTERS.length)];
+  t.forceLetter = null;
   t.turnIdx = 0;
   addChat(t, null, `Game on! Letter ${t.letter} · ${DEVA[t.letter]}. ${THEMES[t.settings.theme].rule}`);
   t.trail.push({ system: true, text: `Game on! First letter is ${t.letter} · ${DEVA[t.letter]}` });
@@ -397,7 +428,9 @@ function botTurn(t, id) {
   // A bot sings a library song (lyrics shown and spoken) whenever one is free for this letter.
   const libOptions = librarySongsFor(t.letter, used);
   let song = null, sing = null;
-  if (libOptions.length) {
+  const stuck = { easy: 0.3, normal: 0.08, hard: 0.02 }[t.settings.botLevel] ?? 0.08;
+  if (Math.random() < stuck) { /* this time the bot can't think of a song */ }
+  else if (libOptions.length) {
     sing = libOptions[Math.floor(Math.random() * libOptions.length)];
     song = sing.title;
   } else {
@@ -410,13 +443,16 @@ function botTurn(t, id) {
   const perf = sing ? songPerformance(sing, Math.max(8, Math.min(35, turnMs(t) / 1000 - 10))) : null;
   t.botSing = sing ? { id: sing.id, title: sing.title, lang: sing.lang, lines: sing.lines, sing: perf.lines, voice: bots.get(id).voice, g: bots.get(id).g } : null;
   const ms = sing ? perf.seconds * 1000 : song ? 5000 + Math.random() * 6000 : 6000 + Math.random() * 4000;
-  t.botTimer = setTimeout(() => {
-    if (t.state !== 'playing' || currentToken(t) !== id || t.verifying) return;
-    if (song) {
-      const err = submitAttempt(t, id, song, song.split(' ').pop());
-      if (err) loseLife(t, id, "couldn't think of a song");
-    } else loseLife(t, id, "couldn't think of a song");
-  }, ms);
+  t.botTimer = setTimeout(() => botFinish(t, id), ms);
+}
+// The bot ends its turn: its song goes to the vote, or it loses a life if it had none.
+function botFinish(t, id) {
+  if (t.state !== 'playing' || currentToken(t) !== id || t.verifying) return;
+  const song = t.botSong;
+  if (song) {
+    const err = submitAttempt(t, id, song, song.split(' ').pop());
+    if (err) loseLife(t, id, "couldn't think of a song");
+  } else loseLife(t, id, "couldn't think of a song");
 }
 
 // A singer submits a song. Other people vote before it counts (or bots only: it counts at once).
@@ -466,15 +502,35 @@ function resolveVerify(t) {
   singer.score += points;
   const p = people.get(v.token);
   if (p) {
+    const before = badgesOf(p);
     p.sung++;
     const wk = weekKey();
     p.weekly = p.weekly || {};
     p.weekly[wk] = (p.weekly[wk] || 0) + points;
+    if (firstLetter(v.song) === dailyLetter() && p.dailyDone !== today()) {
+      p.dailyDone = today();
+      emitTo(v.token, 'toast', `🎯 Daily challenge done: a song on ${dailyLetter()}!`);
+    }
     save();
+    noteBadges(v.token, before);
+    botCheer(t, v.token);
   }
   t.trail.push({ by: v.token, song: v.song, lastWord: v.lastWord, from: t.letter, next: v.next, points, deva: DEVA[v.next] });
   t.letter = v.next;
   nextTurn(t);
+}
+
+// An AI singer at the table cheers a person's good song in chat, with a reaction.
+const CHEERS = ['Wah wah! 👏', 'Kya baat hai! 🔥', 'Sur perfect 🎤', 'Bahut khoob 🙌', 'Ek aur! 🎶', 'Maza aa gaya 😄'];
+function botCheer(t, singer) {
+  const fans = [...t.members.keys()].filter(m => bots.has(m));
+  if (!fans.length || Math.random() > 0.7) return;
+  const fan = fans[Math.floor(Math.random() * fans.length)];
+  setTimeout(() => {
+    if (!t.members.has(fan) || !tables.has(t.code)) return;
+    addChat(t, fan, CHEERS[Math.floor(Math.random() * CHEERS.length)]);
+    broadcast(t, 'react', { from: fan, emoji: ['👏', '🔥', '🙌'][Math.floor(Math.random() * 3)] });
+  }, 1200 + Math.random() * 1500);
 }
 
 function nextTurn(t) {
@@ -498,6 +554,14 @@ function loseLife(t, token, why, { passed = false } = {}) {
   nextTurn(t);
 }
 
+function addWin(token) {
+  const p = people.get(token);
+  if (!p) return;
+  const before = badgesOf(p);
+  p.wins++;
+  noteBadges(token, before);
+}
+
 function checkOver(t) {
   const alive = t.order.filter(tok => memberOf(t, tok)?.lives > 0);
   const humansAlive = alive.filter(isHuman).length;
@@ -514,10 +578,10 @@ function checkOver(t) {
     t.members.forEach(m => { if (m.team) totals[m.team] += m.score; });
     t.winnerTeam = totals.A === totals.B ? 'tie' : totals.A > totals.B ? 'A' : 'B';
     t.winnerToken = [...t.members.values()].filter(m => m.team === t.winnerTeam).sort((a, b) => b.score - a.score)[0]?.token || null;
-    if (t.winnerTeam !== 'tie') t.members.forEach(m => { if (m.team === t.winnerTeam && isHuman(m.token) && people.get(m.token)) people.get(m.token).wins++; });
+    if (t.winnerTeam !== 'tie') t.members.forEach(m => { if (m.team === t.winnerTeam && isHuman(m.token)) addWin(m.token); });
   } else {
     t.winnerToken = alive[0] && alive.length === 1 ? alive[0] : [...t.members.values()].sort((a, b) => b.score - a.score)[0]?.token || null;
-    if (t.winnerToken && isHuman(t.winnerToken) && people.get(t.winnerToken)) people.get(t.winnerToken).wins++;
+    if (t.winnerToken && isHuman(t.winnerToken)) addWin(t.winnerToken);
   }
   let best = null, bestN = 0;
   t.clapTotals.forEach((n, tok) => { if (n > bestN) { best = tok; bestN = n; } });
@@ -546,8 +610,8 @@ function sendInvite(fromToken, toToken) {
   if (!isOnline(toToken)) return `${to.name} is offline right now`;
   if (personTable.has(toToken)) return `${to.name} is already at a table`;
   const mine = tables.get(personTable.get(fromToken));
-  if (mine && mine.state === 'playing') return 'Finish this game before inviting';
-  if (mine && mine.type === 'game' && singersIn(mine).length >= GAME_MAX) return 'Your table is full';
+  if (mine && mine.type === 'game' && mine.state !== 'playing' && singersIn(mine).length >= GAME_MAX) return 'Your table is full';
+  if (mine && joinable(mine, toToken)) return joinable(mine, toToken);
   const key = `${fromToken}>${toToken}`;
   if (invites.has(key)) return `Already waiting for ${to.name}`;
   invites.set(key, setTimeout(() => {
@@ -640,12 +704,13 @@ io.on('connection', socket => {
   });
 
   // Play now: a game with two AI singers that starts at once.
-  socket.on('table:quick', () => {
+  socket.on('table:quick', (p = {}) => {
     if (!token || !people.get(token)?.name) return toast('Create your profile first');
     const picks = freeBots().slice(0, 2);
     if (!picks.length) return toast('All AI singers are busy. Try again in a minute.');
     leaveTable(token);
-    const t = createTable('game', token, { private: true });
+    const t = createTable('game', token, { private: true, botLevel: p.level });
+    if (p.daily) t.forceLetter = dailyLetter();
     joinTable(t, token, { silent: true });
     picks.forEach(b => joinTable(t, b, { silent: true }));
     addChat(t, null, `${picks.map(b => personOf(b).name).join(' and ')} joined. Let's sing!`);
@@ -687,6 +752,11 @@ io.on('connection', socket => {
       pushTable(t); pushLobby();
       return;
     }
+    if (['easy', 'normal', 'hard'].includes(p.settings?.botLevel)) {
+      t.settings.botLevel = p.settings.botLevel;
+      pushTable(t);
+      return;
+    }
     if (t.state === 'playing' || t.type !== 'game') return;
     const next = pick({ ...t.settings, ...p.settings, theme: p.settings?.theme ?? t.settings.theme, turnSec: p.settings?.turnSec ?? t.settings.turnSec });
     if (p.settings?.theme && p.settings.turnSec === undefined) next.turnSec = THEMES[p.settings.theme].turnSec;
@@ -716,6 +786,27 @@ io.on('connection', socket => {
     if (!t) return;
     const err = submitAttempt(t, token, p.song, p.lastWord);
     if (err) toast(err);
+  });
+
+  // 59. The host can skip an AI singer's turn: its song goes straight to the vote.
+  socket.on('turn:skipbot', () => {
+    const t = myTable();
+    if (!t) return;
+    if (t.hostToken !== token) return toast('Only the host can skip');
+    if (t.state !== 'playing' || t.verifying || !bots.has(currentToken(t))) return;
+    clearTimeout(t.botTimer);
+    botFinish(t, currentToken(t));
+  });
+
+  // 73. After a game, anyone can ask the host for a rematch.
+  socket.on('rematch', () => {
+    const t = myTable();
+    if (!t || t.state !== 'over' || t.hostToken === token || t.rematchAsked?.has(token)) return;
+    (t.rematchAsked = t.rematchAsked || new Set()).add(token);
+    const name = personOf(token)?.name || 'Someone';
+    addChat(t, null, `${name} wants a rematch! 🔁`);
+    emitTo(t.hostToken, 'toast', `🔁 ${name} wants a rematch. Press Play again!`);
+    toast('Asked the host for a rematch');
   });
 
   socket.on('turn:pass', () => {

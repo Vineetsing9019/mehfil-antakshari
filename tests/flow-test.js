@@ -31,6 +31,9 @@ function person(name, opts = {}) {
   s.on('invite', i => st.invites.push(i));
   s.on('chat', ({ msg }) => st.chat.push(msg));
   s.on('me', m => { st.me = m; });
+  st.badges = []; st.updates = [];
+  s.on('badge', b => st.badges.push(b));
+  s.on('me:update', p => st.updates.push(p));
   s.on('connect', () => s.emit('hello', { token }));
   return new Promise(res => {
     s.once('me', () => {
@@ -41,6 +44,10 @@ function person(name, opts = {}) {
   });
 }
 const lastToast = st => st.toasts[st.toasts.length - 1];
+// Plain http (not fetch): fetch leaves a handle that crashes Node on Windows at exit.
+const getText = path => new Promise((res, rej) => require('http').get(URL + path, r => {
+  let body = ''; r.on('data', c => { body += c; }); r.on('end', () => res({ status: r.statusCode, body }));
+}).on('error', rej));
 const msgs = { seen: 0 };
 
 async function main() {
@@ -281,7 +288,68 @@ async function main() {
     await wait(300);
     check('a Sing together table can be made link-only too', jamH.view.settings.private === true);
 
-    for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G, Q, R, Lk, Ob, Bw, jamH]) p.s.close();
+    console.log('\n11. Daily challenge, suggestions, badges, skip, difficulty, rematch, invites, QR');
+    const Dy = await person('Diya', { handle: 'diya' });
+    const daily = Dy.me.profile.daily;
+    check('everyone gets a daily challenge letter', daily && /^[A-Z]$/.test(daily.letter) && daily.done === false, JSON.stringify(daily));
+    Dy.s.emit('table:quick', { daily: true, level: 'hard' });
+    await wait(500);
+    check('the daily challenge game starts on today\'s letter', Dy.view?.letter === daily.letter, Dy.view && Dy.view.letter);
+    check('Play now can set the AI singers\' level', Dy.view?.settings.botLevel === 'hard');
+    check('the singer whose turn it is gets title suggestions', Dy.view?.turn === Dy.token && Dy.view.titles.length > 0 && Dy.view.titles.every(t => t[0].toUpperCase() === daily.letter), String(Dy.view?.titles.length));
+    Dy.s.emit('turn:done', { song: daily.letter + 'eher Test Gaana', lastWord: 'Gaana' });
+    for (let i = 0; i < 20 && !Dy.updates.some(p => p.daily && p.daily.done); i++) await wait(150);
+    check('a song on today\'s letter completes the daily challenge', Dy.updates.some(p => p.daily && p.daily.done));
+    check('a first song earns the "First song" badge, announced at once', Dy.badges.includes('First song 🎤'), Dy.badges.join(','));
+    // the AI singer is now singing: the host skips it
+    for (let i = 0; i < 20 && !(Dy.view?.turn && Dy.view.members.find(m => m.token === Dy.view.turn)?.bot); i++) await wait(150);
+    const botTurn = Dy.view.turn;
+    const trailBefore = Dy.view.trail.length;
+    Dy.s.emit('turn:skipbot');
+    const skipped = () => Dy.view.turn !== botTurn || Dy.view.trail.length > trailBefore || Dy.view.verifying?.singer === botTurn;
+    for (let i = 0; i < 20 && !skipped(); i++) await wait(150);
+    check('the host can skip an AI singer\'s turn', skipped());
+    Dy.s.emit('table:settings', { settings: { botLevel: 'easy' } });
+    await wait(250);
+    check('the AI singers\' level can be changed during a game', Dy.view.settings.botLevel === 'easy');
+    // invite a friend by name in the middle of the game: they join and listen
+    const Fr = await person('Firoz', { handle: 'firoz' });
+    Dy.s.emit('invite', { token: Fr.token });
+    await wait(400);
+    check('a friend can be invited during a game', Fr.invites.some(i => i.fromToken === Dy.token));
+    Fr.s.emit('invite:respond', { fromToken: Dy.token, accept: true });
+    await wait(400);
+    check('they join the game as a listener', Fr.view?.code === Dy.view.code && Fr.view.members.find(m => m.token === Fr.token)?.role === 'listener');
+    Fr.s.emit('turn:skipbot');
+    await wait(200);
+    check('only the host can skip', Fr.toasts.includes('Only the host can skip'));
+    // rematch: a 1-life game; the host passes on the first turn, so the game ends at once
+    const Hs = await person('Hari', { handle: 'hari' });
+    const Gs = await person('Gita', { handle: 'gita' });
+    Hs.s.emit('table:create', { type: 'game', settings: { lives: 1 } });
+    await wait(300);
+    Hs.s.emit('table:addbot');
+    await wait(300);
+    Hs.s.emit('table:start');
+    await wait(300);
+    Hs.s.emit('invite', { token: Gs.token });
+    await wait(300);
+    Gs.s.emit('invite:respond', { fromToken: Hs.token, accept: true });
+    await wait(300);
+    if (Hs.view.turn !== Hs.token) for (let i = 0; i < 80 && Hs.view.turn !== Hs.token && Hs.view.state === 'playing'; i++) await wait(250);
+    Hs.s.emit('turn:pass');
+    await wait(400);
+    check('the game ends when the only singing person is out', Hs.view.state === 'over', Hs.view.state);
+    Gs.s.emit('rematch');
+    await wait(300);
+    check('a non-host can ask for a rematch', Hs.toasts.some(t => t.includes('wants a rematch')) && Hs.chat.some(m => m.text.includes('wants a rematch')));
+    // QR code for the table link
+    const qr = await getText(`/qr/${Dy.view.code}.svg`);
+    check('the QR code endpoint returns a picture', qr.status === 200 && qr.body.startsWith('<svg'), String(qr.status));
+    const badQr = await getText('/qr/..%2F.svg');
+    check('bad QR codes are refused', badQr.status === 404);
+
+    for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G, Q, R, Lk, Ob, Bw, jamH, Dy, Fr, Hs, Gs]) p.s.close();
   } catch (err) {
     failed++;
     console.log('  ✗ test crashed:', err.message);

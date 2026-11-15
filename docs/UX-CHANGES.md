@@ -141,3 +141,6 @@ Status: **Done** = built and checked in the browser (phone size) and by the test
 | 73 | Non-hosts can ask for a rematch. | The game shouldn't stall on the host. | Open |
 | 74 | Photo nudge after the first game ("Add a photo so friends know you"). | Asked at the right time, not at sign-up. | Open |
 | 75 | Sound effects on/off in Settings. | Some people play in quiet places. | Open |
+
+| 76 | Invite by name from inside the table (Singers sheet, and "Invite by name" in the waiting room); works during a game too (friend listens, sings next round). | Friends can bring friends without leaving. | Done |
+| 77 | Leaving a table stops the AI singer's voice and music at once. | They kept singing after you left. | Done |

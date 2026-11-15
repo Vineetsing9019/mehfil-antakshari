@@ -24,6 +24,7 @@ const TURNS = [20, 30, 60, 90];
 const LANGS = [['en', 'English'], ['hi', 'हिन्दी'], ['mr', 'मराठी']];
 const REACTIONS = ['👏', '🔥', '🎶', '😂', '❤️', '🙌', '🥹', '🤩'];
 const MAX_POSTS = 9;
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition || null;
 const store = {
   get: k => { try { return localStorage.getItem(k); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
@@ -38,6 +39,8 @@ const S = {
   aiVoice: true, lyricIdx: -1, lastTouched: false, saidTurn: '',
 };
 S.aiVoice = store.get('ak-aivoice') !== 'off';
+S.sfx = store.get('ak-sfx') !== 'off';
+S.muted = new Set();
 
 const params = new URLSearchParams(location.search);
 S.pendingCode = (params.get('t') || '').toUpperCase() || null;
@@ -58,6 +61,7 @@ function audioCtx() {
   return S.actx;
 }
 function chime(freqs) {
+  if (!S.sfx) return;
   try {
     const ctx = audioCtx();
     freqs.forEach((f, i) => {
@@ -70,6 +74,7 @@ function chime(freqs) {
 }
 // A short made-up tune for a bot singer (not a recording).
 function hum(seed) {
+  if (!S.sfx) return;
   try {
     const ctx = audioCtx(), notes = [261.6, 293.7, 329.6, 392, 440, 523.3];
     let i = 0;
@@ -148,6 +153,31 @@ function lyricBox(v) {
 function highlightLyric() {
   const box = $('#t-stage .lyric');
   if (box && S.table?.botSing) box.innerHTML = lyricBox(S.table);
+}
+// 58. Soft tanpura and dholak under an AI singer's voice, only while it sings (and only with sounds on).
+function musicBed(on) {
+  if (on && S.sfx && !S.amb) { startAmbience(); S.bedOn = true; }
+  else if (!on && S.bedOn) { S.bedOn = false; if (store.get('ak-music') !== 'on') stopAmbience(); }
+}
+// 62. A short tick for the last 5 seconds of your turn.
+function tickSound() {
+  if (!S.sfx) return;
+  try {
+    const ctx = audioCtx(), o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
+    o.frequency.value = 1250; o.connect(g).connect(ctx.destination);
+    g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+    o.start(t); o.stop(t + 0.07);
+  } catch { /* no audio */ }
+}
+// 61. "+10" (or "+15 ⚡ fast") rises from the stage when your song is accepted.
+function popPoints(n) {
+  const stage = $('#stage'); if (!stage) return;
+  const el = document.createElement('div');
+  el.className = 'points';
+  el.textContent = `+${n}${n > 10 ? ' ⚡ fast' : ''}`;
+  stage.appendChild(el);
+  chime([784, 988, 1175]);
+  setTimeout(() => el.remove(), 1700);
 }
 // Tanpura drone and a soft dholak beat for between turns.
 function startAmbience() {
@@ -256,7 +286,7 @@ socket.on('profile:deleted', () => {
   toast('Your profile was deleted');
   showJoin();
 });
-socket.on('lobby', d => { S.lobby = d; if (!S.table) renderLobby(); });
+socket.on('lobby', d => { S.lobby = d; if (!S.table) renderLobby(); else if (S.sheet === 'singers') renderInviteList(); });
 socket.on('table', v => {
   if (!v) { leaveLocal(); return; }
   S.table = v;
@@ -277,6 +307,17 @@ socket.on('chat', ({ table, msg }) => {
   renderDock();
 });
 socket.on('react', ({ from, emoji }) => floatEmoji(emoji, from));
+socket.on('me:update', p => { S.me = p; renderMe(); if (!S.table) renderLobby(); });
+socket.on('badge', b => {
+  const el = document.createElement('div');
+  el.className = 'badgepop';
+  el.innerHTML = `<span>🏅</span><b>New badge</b><small>${esc(b)}</small>`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+  confetti();
+  chime([659, 784, 988, 1319]);
+});
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); S.installPrompt = e; });
 socket.on('toast', toast);
 socket.on('invite', inv => {
   S.invites.push(inv);
@@ -313,7 +354,10 @@ function leaveLocal() {
   S.table = null;
   S.lastCode = null;
   closeAllPeers();
+  S.singId++; window.speechSynthesis?.cancel(); S.lyricIdx = -1;
+  S.bedOn = false;
   stopAmbience();
+  S.seenTrail = undefined;
   if (S.local) { S.local.getTracks().forEach(t => t.stop()); S.local = null; S.micPromise = null; }
   closeModal();
   if (S.named) showLobby(); else showJoin();
@@ -336,6 +380,12 @@ function renderLobby() {
   const first = (S.me?.name || '').split(' ')[0];
   const streak = S.me?.streak || 0;
   $('#hello').innerHTML = first ? esc(`Namaste, ${first} 👋`) + (streak >= 2 ? ` <span class="streak">🔥 ${streak} days</span>` : '') : '';
+  const d = S.me?.daily, extra = [];
+  if (d) extra.push(d.done ? '<div class="daily done">🎯 Daily challenge done ✓ · new letter tomorrow</div>'
+    : `<button class="daily" data-act="daily">🎯 Daily challenge: sing a <b>${esc(d.letter)}</b> song</button>`);
+  if ((S.me?.sung || 0) >= 1 && !S.me?.photo && store.get('ak-photo-nudge') !== 'off')
+    extra.push('<div class="nudge">📸 Add a photo so friends know you <button class="btn btn-text btn-sm" data-act="edit-profile">Add</button><button class="ico" data-act="nudge-off" aria-label="Not now">✕</button></div>');
+  $('#home-extra').innerHTML = extra.join('');
   // Open tables: only shown when there are some.
   $('#tables-card').hidden = !S.lobby.tables.length;
   $('#lobby-tables').innerHTML = S.lobby.tables.map(t => `<div class="tcard"><div><b>${t.type === 'jam' ? '🎶 Sing together' : '🎤 Antakshari'}</b><small>${esc(t.host)} · ${t.count}/${t.max}${t.lang ? ' · ' + esc(t.lang) : ''}${t.state === 'playing' ? ' · game on' : ''}</small></div><button class="btn btn-line btn-sm" data-act="join-tap" data-arg="${esc(t.code)}">Join</button></div>`).join('');
@@ -543,9 +593,19 @@ function renderTable() {
     S.singId++;   // stop any line that is still waiting to be spoken
     S.lyricIdx = -1;
     window.speechSynthesis?.cancel();
+    musicBed(!!(botNow && v.botSing && S.aiVoice));
     if (botNow && v.botSing && S.aiVoice) speakSong(v.botSing, v.turn);
     else if (v.botSong && botNow && S.aiVoice) hum(v.botSong);
   }
+  if (v.verifying && v.members.find(m => m.token === v.verifying.singer)?.bot && S.bedOn) {
+    musicBed(false); S.singId++; window.speechSynthesis?.cancel();
+  }
+  // 61. My song was just accepted: show the points.
+  if (S.seenTrail !== undefined && v.trail.length > S.seenTrail) {
+    const last = v.trail[v.trail.length - 1];
+    if (last && last.song && last.by === S.token) popPoints(last.points);
+  }
+  S.seenTrail = v.trail.length;
   if (S.amb) S.amb.master.gain.value = v.turn ? .15 : .5;
   applyMic();
   applyMuting();
@@ -632,6 +692,8 @@ function tickOnce() {
   const p = $('#ring-prog'); if (p) p.style.strokeDashoffset = String(100 - 100 * left / v.turnMs);
   $('#ring')?.classList.toggle('low', left < 10000);
   const s = $('#secs'); if (s) s.textContent = Math.ceil(left / 1000) + 's left';
+  const sec = Math.ceil(left / 1000);
+  if (v.turn === S.token && !v.verifying && left > 0 && sec <= 5 && sec !== S.tickSec) { S.tickSec = sec; tickSound(); navigator.vibrate?.(40); }
   animateEq(v);
 }
 // Equaliser bars follow the singer's real voice; a bot's bars move to its hummed tune.
@@ -683,7 +745,9 @@ function renderAction() {
       const hint = S.hints && S.hints.letter === v.letter ? `<div class="hints">${S.hints.titles.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : '';
       box.innerHTML = `<div class="act-title">Your turn 🎤</div>
         <p class="lead">${turnLead(v)}</p>
-        <input class="song-in" id="in-song" maxlength="80" placeholder="Song you sang, starting with ${esc(v.letter)}" autocomplete="off" enterkeyhint="done" value="${esc(keep.song)}">
+        <div class="songrow"><input class="song-in" id="in-song" list="song-list" maxlength="80" placeholder="Song you sang, starting with ${esc(v.letter)}" autocomplete="off" enterkeyhint="done" value="${esc(keep.song)}">
+          ${SpeechRec ? '<button class="ico micsay" data-act="say-title" aria-label="Say the song name" title="Say the song name">🎤</button>' : ''}</div>
+        <datalist id="song-list"></datalist>
         <label class="lastword"><span>Last word you sang</span>
           <input class="song-in" id="in-last" maxlength="30" placeholder="Filled from the title" autocomplete="off" enterkeyhint="done" value="${esc(keep.last)}"></label>
         <div class="hint" id="next-hint">The last word's sound sets the next letter.</div>
@@ -700,6 +764,9 @@ function renderAction() {
           $('#in-last').value = words[words.length - 1] || '';
         }
         const s = ($('#in-song')?.value || '').trim(), f = (s.match(/[a-z]/i) || [''])[0].toUpperCase();
+        // Suggestions only after 2 letters, so they help with spelling but don't give the answer away.
+        const dl = $('#song-list');
+        if (dl) dl.innerHTML = s.length >= 2 ? (v.titles || []).filter(t => t.toLowerCase().startsWith(s.toLowerCase()) && t.toLowerCase() !== s.toLowerCase()).slice(0, 6).map(t => `<option value="${esc(t)}"></option>`).join('') : '';
         S.draft = { song: $('#in-song')?.value || '', last: $('#in-last')?.value || '' };
         const hintEl = $('#next-hint');
         if (!hintEl) return;
@@ -722,11 +789,14 @@ function renderAction() {
       return;
     }
     const listener = myMember(v)?.role === 'listener';
-    box.innerHTML = `<div class="act-title">${listener ? 'Listening 🎧 · you sing next round' : 'Listen and cheer 👏'}</div>`;
+    const botSinging = v.members.find(m => m.token === v.turn)?.bot;
+    box.innerHTML = `<div class="act-title">${listener ? 'Listening 🎧 · you sing next round' : 'Listen and cheer 👏'}</div>
+      ${botSinging && v.isHost ? '<button class="btn btn-line btn-sm" data-act="skip-bot">Skip ⏭</button>' : ''}`;
     return;
   }
   if (v.state === 'over') {
-    box.innerHTML = `<div class="act-title">${v.isHost ? 'Game over. Play again ↑' : 'Game over'}</div>`;
+    box.innerHTML = `<div class="act-title">${v.isHost ? 'Game over. Play again ↑' : 'Game over'}</div>
+      ${v.isHost ? '' : '<button class="btn btn-line btn-sm" data-act="rematch">Ask for a rematch 🔁</button>'}`;
     return;
   }
   if (!v.isHost) {
@@ -741,7 +811,7 @@ function renderAction() {
       <button class="btn ${alone ? 'btn-primary' : 'btn-line'}" data-act="share-wa">Invite on WhatsApp</button>
       <button class="btn btn-line btn-sm" data-act="add-bot">🤖 Add AI singer</button>
     </div>
-    <button class="btn btn-text btn-sm" data-act="copy">Copy link</button>`;
+    <div class="row"><button class="btn btn-text btn-sm" data-act="invite-name">Invite by name</button><button class="btn btn-text btn-sm" data-act="copy">Copy link</button></div>`;
 }
 function nextLetterClient(word) {
   const w = String(word).toLowerCase().replace(/[^a-z]/g, '');
@@ -773,6 +843,7 @@ function membersHtml(v) {
       ${av(m)}<div class="who"><div class="nm">${esc(m.name)}${m.token === S.token ? ' (you)' : ''}</div><div class="role">${role}${m.online ? '' : ' · reconnecting…'}</div></div>
       <div class="score">${v.type === 'game' ? `${hearts} ${m.score}` : ''}${m.claps ? ' · 👏' + m.claps : ''}</div>
       <div class="actions">
+        ${m.token !== S.token && !m.bot ? `<button class="ico" data-act="mute" data-arg="${esc(m.token)}" aria-label="${S.muted.has(m.token) ? 'Unmute' : 'Mute'} ${esc(m.name)} for me" title="${S.muted.has(m.token) ? 'Unmute' : 'Mute for me'}">${S.muted.has(m.token) ? '🔇' : '🔊'}</button>` : ''}
         ${m.token !== S.token && !m.bot ? `<button class="ico" data-act="follow" data-arg="${esc(m.token)}" aria-label="${m.followed ? 'Unfollow' : 'Follow'} ${esc(m.name)}">${m.followed ? '★' : '☆'}</button>` : ''}
         ${v.isHost && m.token !== S.token ? `<button class="ico" data-act="kick" data-arg="${esc(m.token)}" aria-label="Remove ${esc(m.name)}">✕</button>` : ''}
         ${m.token !== S.token && !m.bot ? `<button class="ico" data-act="profile" data-arg="${esc(m.token)}" aria-label="Open profile">👤</button>` : ''}
@@ -782,7 +853,8 @@ function membersHtml(v) {
 
 function settingsHtml(v) {
   const s = v.settings;
-  const privacy = v.isHost ? `<label class="switch">Link only (hide from Open tables) <input type="checkbox" ${s.private ? 'checked' : ''} data-act="toggle-private" aria-label="Link only"></label>` : '';
+  const privacy = (v.isHost ? `<label class="switch">Link only (hide from Open tables) <input type="checkbox" ${s.private ? 'checked' : ''} data-act="toggle-private" aria-label="Link only"></label>` : '')
+    + (v.isHost && v.type === 'game' ? `<span class="lbl">AI singers</span><div class="chips">${[['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']].map(([k, l]) => `<button class="chip ${(s.botLevel || 'normal') === k ? 'on' : ''}" data-act="set" data-arg="botLevel=${k}">${l}</button>`).join('')}</div>` : '');
   if (v.type === 'jam') return privacy + '<p class="muted">Sing together has no game settings. Everyone talks, and the queue is on the main screen.</p>';
   if (!v.isHost || v.state === 'playing') {
     return privacy + `<p class="muted">Game: ${esc(v.themeLabel)} · ${s.turnSec}s a turn · ${s.lives} ❤ · everyone talks${s.teams ? ' · teams' : ''}</p>
@@ -827,21 +899,42 @@ function renderSheet() {
   }
   if (S.sheet === 'singers') {
     title.textContent = `👥 Singers ${v.members.length}/${v.type === 'jam' ? 8 : 6}`;
-    body.innerHTML = `<div class="sechead"><span class="muted" id="voice-status"></span></div><div class="members">${membersHtml(v)}</div>`;
+    const q = $('#inv-q')?.value ?? '', typing = document.activeElement?.id === 'inv-q';
+    body.innerHTML = `<div class="invite-name"><input id="inv-q" placeholder="Invite by name" autocomplete="off" aria-label="Invite by name" value="${esc(q)}"><div id="inv-list"></div></div>
+      <div class="sechead"><span class="muted" id="voice-status"></span></div><div class="members">${membersHtml(v)}</div>`;
+    renderInviteList();
+    if (typing) { const i = $('#inv-q'); i.focus(); i.setSelectionRange(q.length, q.length); }
     updateVoiceStatus();
     return;
   }
   title.textContent = '⚙ Settings';
   body.innerHTML = `<div class="set-share">
-      <button class="btn btn-line btn-sm" data-act="share-wa">Share on WhatsApp</button>
+      <button class="btn btn-line btn-sm" data-act="share-wa">${navigator.share ? 'Share link' : 'Share on WhatsApp'}</button>
       <button class="btn btn-line btn-sm" data-act="copy">Copy link</button>
+      <button class="btn btn-line btn-sm" data-act="qr">QR code</button>
       <button class="btn btn-line btn-sm" data-act="mic-test">🎙 Mic check</button>
       <button class="btn btn-line btn-sm" data-act="music">${S.amb ? '🔇 Music off' : '🎵 Music on'}</button>
     </div>
     <label class="switch">AI singers sing out loud <input type="checkbox" ${S.aiVoice ? 'checked' : ''} data-act="ai-voice" aria-label="AI voice"></label>
+    <label class="switch">Sounds <input type="checkbox" ${S.sfx ? 'checked' : ''} data-act="sfx" aria-label="Sounds"></label>
     ${settingsHtml(v)}
     <button class="btn btn-text btn-block" data-act="leave" style="margin-top:14px">Leave table</button>`;
 }
+
+// People you can invite from the table: free singers whose name matches, real people first.
+function renderInviteList() {
+  const box = $('#inv-list'); if (!box) return;
+  const q = ($('#inv-q')?.value || '').trim().toLowerCase();
+  const here = new Set((S.table?.members || []).map(m => m.token));
+  const list = S.lobby.people
+    .filter(p => p.status === 'free' && !here.has(p.token) && (!q || (p.name + ' ' + p.handle).toLowerCase().includes(q)))
+    .sort((a, b) => (a.bot ? 1 : 0) - (b.bot ? 1 : 0))
+    .slice(0, q ? 8 : 4);
+  box.innerHTML = list.length ? list.map(p => `<div class="mrow">${av(p)}<div class="who"><div class="nm">${esc(p.name)}${p.bot ? '<span class="aib">AI</span>' : ''}</div><div class="role">${p.bot ? 'AI singer' : '@' + esc(p.handle)}</div></div>
+      ${S.sent.has(p.token) ? '<span class="pstate">Invited</span>' : `<button class="btn btn-line btn-sm" data-act="req" data-arg="${esc(p.token)}">Invite</button>`}</div>`).join('')
+    : `<div class="muted inv-empty">${q ? 'No free singer with that name' : 'No one free right now'}</div>`;
+}
+document.addEventListener('input', e => { if (e.target.id === 'inv-q') renderInviteList(); });
 
 function renderChatLog() {
   const v = S.table, box = $('#t-chatlog');
@@ -865,12 +958,14 @@ function showOver() {
   const winnerName = v.winnerTeam ? (v.winnerTeam === 'tie' ? 'A tie!' : `Team ${v.winnerTeam} wins!`) : `${v.members.find(m => m.token === v.winnerToken)?.name || 'Someone'} wins!`;
   const mine = v.winnerToken === S.token;
   modal(`<div class="trophy">🏆</div><h3>${mine ? 'You won the mehfil!' : esc(winnerName)}</h3>
-    <p>${v.trail.filter(t => !t.system).length} songs sung</p>
+    <p>${v.trail.filter(t => t.song).length} songs sung</p>
+    ${v.trail.some(t => t.song) ? `<ol class="recap">${v.trail.filter(t => t.song).slice(-12).map(t => `<li>🎵 ${esc(t.song)} <span class="muted">· ${esc(v.members.find(m => m.token === t.by)?.name.split(' ')[0] || '')}</span></li>`).join('')}</ol>` : ''}
     ${v.crowdFav ? `<p>🎉 Crowd favourite: <b>${esc(v.members.find(m => m.token === v.crowdFav)?.name || '')}</b></p>` : ''}
     <div class="board">${ranked.map((p, i) => `<div class="${p.token === v.winnerToken ? 'win' : ''}"><span>${i + 1}.</span>${av(p)}<span class="n">${esc(p.name)}${p.team ? ' · ' + p.team : ''}</span><b>${p.score}</b></div>`).join('')}</div>
-    <div class="row">${v.isHost ? '<button class="btn btn-primary" data-act="start">Play again</button>' : '<button class="btn btn-primary" data-act="close">Back to table</button>'}
-      <button class="btn btn-line" data-act="share-result">Share on WhatsApp</button></div>
-    ${v.isHost ? '<div class="row"><button class="btn btn-text btn-sm" data-act="close">Back to table</button></div>' : ''}`);
+    <div class="row">${v.isHost ? '<button class="btn btn-primary" data-act="start">Play again</button>' : '<button class="btn btn-primary" data-act="rematch">Ask for a rematch 🔁</button>'}
+      <button class="btn btn-line" data-act="share-result">Share</button></div>
+    <div class="row"><button class="btn btn-text btn-sm" data-act="close">Back to table</button>
+      ${S.installPrompt && store.get('ak-install') !== 'off' ? '<button class="btn btn-text btn-sm" data-act="install">📲 Add to home screen</button>' : ''}</div>`);
   confetti();
 }
 function confetti() {
@@ -935,7 +1030,7 @@ function applyMuting() {
   const v = S.table;
   S.peers.forEach((p, tok) => {
     // Take-turns games: only the singer is heard. Call-style tables: everyone is heard.
-    p.audio.muted = false;
+    p.audio.muted = S.muted.has(tok);
   });
 }
 function syncPeers() {
@@ -1021,7 +1116,35 @@ const ACT = {
   howto: () => modal('<h3>How to play</h3><ol class="howto"><li>Sing a song that starts with the big letter.</li><li>Type its name. Its last letter goes to the next singer.</li><li>Everyone votes. Last singer standing wins.</li></ol><div class="row"><button class="btn btn-primary" data-act="close">Got it</button></div>'),
   'show-code': () => { $('#code-form').hidden = false; $('#show-code').hidden = true; $('#code-in').focus(); },
   'join-tap': arg => joinCode(arg),
-  req: arg => { socket.emit('invite', { token: arg }); S.sent.add(arg); closeModal(); if (!S.table) renderLobby(); },
+  req: arg => { socket.emit('invite', { token: arg }); S.sent.add(arg); closeModal(); if (!S.table) renderLobby(); else renderInviteList(); },
+  'skip-bot': () => { S.singId++; window.speechSynthesis?.cancel(); musicBed(false); socket.emit('turn:skipbot'); },
+  rematch: () => { socket.emit('rematch'); closeModal(); },
+  daily: () => socket.emit('table:quick', { daily: true }),
+  'nudge-off': () => { store.set('ak-photo-nudge', 'off'); renderLobby(); },
+  install: () => { const p = S.installPrompt; S.installPrompt = null; store.set('ak-install', 'off'); closeModal(); p?.prompt(); },
+  mute: arg => {
+    const name = S.table?.members.find(m => m.token === arg)?.name || 'them';
+    if (S.muted.has(arg)) { S.muted.delete(arg); toast(`You can hear ${name} again`); } else { S.muted.add(arg); toast(`${name} is muted for you only`); }
+    applyMuting(); renderSheet();
+  },
+  sfx: () => { S.sfx = !S.sfx; store.set('ak-sfx', S.sfx ? 'on' : 'off'); if (!S.sfx) musicBed(false); },
+  qr: () => {
+    const c = S.table?.code; if (!c) return;
+    closeSheet();
+    modal(`<h3>Scan to join</h3><img class="qr" src="/qr/${c}.svg" alt="QR code to join table ${c}" width="220" height="220"><p class="bigcode">${c}</p>
+      <div class="row"><button class="btn btn-primary" data-act="close">Done</button></div>`);
+  },
+  'invite-name': () => { openSheet('singers'); setTimeout(() => $('#inv-q')?.focus(), 50); },
+  'say-title': () => {
+    const r = new SpeechRec();
+    r.lang = 'en-IN'; r.interimResults = false; r.maxAlternatives = 1;
+    r.onresult = e => {
+      const said = e.results[0][0].transcript.trim().replace(/\b\w/g, c => c.toUpperCase());
+      const i = $('#in-song'); if (i) { i.value = said; i.dispatchEvent(new Event('input')); }
+    };
+    r.onerror = () => toast("Couldn't hear the song name. Try again or type it.");
+    try { r.start(); toast('Say the song name…'); } catch { /* already listening */ }
+  },
   'ai-voice': () => {
     S.aiVoice = !S.aiVoice;
     store.set('ak-aivoice', S.aiVoice ? 'on' : 'off');
@@ -1030,8 +1153,7 @@ const ACT = {
   'share-result': () => {
     const v = S.table; if (!v) return;
     const winner = v.winnerToken === S.token ? 'I won' : `${v.members.find(m => m.token === v.winnerToken)?.name || 'Someone'} won`;
-    const msg = `${winner} a round of Antakshari on Mehfil! 🎤 ${v.trail.filter(t => t.song).length} songs sung. Play with me: ${location.origin}/?t=${v.code}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+    shareLink(`${winner} a round of Antakshari on Mehfil! 🎤 ${v.trail.filter(t => t.song).length} songs sung. Play with me:`, `${location.origin}/?t=${v.code}`);
   },
   profile: arg => openProfile(arg),
   'profile-me': () => openProfile(S.token),
@@ -1066,7 +1188,7 @@ const ACT = {
   start: () => socket.emit('table:start'),
   set: arg => {
     const [k, raw] = arg.split('=');
-    const val = ['theme', 'lang', 'voice'].includes(k) ? raw : Number(raw);
+    const val = ['theme', 'lang', 'voice', 'botLevel'].includes(k) ? raw : Number(raw);
     socket.emit('table:settings', { settings: { [k]: val } });
   },
   'toggle-teams': () => socket.emit('table:settings', { settings: { teams: !S.table.settings.teams } }),
@@ -1099,13 +1221,14 @@ const ACT = {
   'share-wa': () => {
     const v = S.table; if (!v) return;
     const link = `${location.origin}/?t=${v.code}`;
-    const msg = v.type === 'jam'
-      ? `Come sing with me on Mehfil! 🎶 Jam table ${v.code}. Tap to join: ${link}`
-      : `Let's play Antakshari on Mehfil! 🎤 Table ${v.code}. Tap to join: ${link}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+    shareLink(v.type === 'jam' ? `Come sing with me on Mehfil! 🎶 Table ${v.code}. Tap to join:` : `Let's play Antakshari on Mehfil! 🎤 Table ${v.code}. Tap to join:`, link);
   },
   copy: () => { if (S.table) copy(`${location.origin}/?t=${S.table.code}`, 'Table link copied'); },
 };
+function shareLink(text, url) {
+  if (navigator.share) return navigator.share({ title: 'Mehfil', text, url }).catch(() => {});
+  window.open(`https://wa.me/?text=${encodeURIComponent(text + ' ' + url)}`, '_blank', 'noopener');
+}
 function copy(text, ok) {
   if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => toast(ok), () => prompt('Copy this link:', text));
   else prompt('Copy this link:', text);
