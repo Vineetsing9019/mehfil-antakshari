@@ -41,7 +41,7 @@ Status: **Done** = built and checked in the browser (phone size) and by the test
 |---|--------|-----|--------|
 | 20 | Waiting room primary: "Invite on WhatsApp". Secondary: "Add AI singer". Tertiary: "Copy link". | Sharing was hidden inside Settings; it is the most important action when alone. | Done |
 | 21 | Alone at a table: "Add an AI singer to start" instead of a disabled Start button. | A disabled button with no reason is a dead end. | Done |
-| 22 | Tap the table code to copy the link. | People expect codes to be copyable. | Built |
+| 22 | Tap the table code to copy the link. | People expect codes to be copyable. | Done |
 | 23 | Leaving during a game asks to confirm. | Stops accidental exits that lose your seat. | Done |
 
 ## D. Table: playing
@@ -54,14 +54,14 @@ Status: **Done** = built and checked in the browser (phone size) and by the test
 | 27 | "AI voice" on/off in Settings, remembered on the device. | Some people do not want spoken lyrics. | Done |
 | 28 | AI badge on bot seats at the table. | Always clear who is real. | Done |
 | 29 | Show the last song and who sang it under the letter. | Context for the next singer. | Done |
-| 30 | Screen-reader announcement when it is your turn. | Accessibility. | Built |
+| 30 | Screen-reader announcement when it is your turn. | Accessibility. | Done |
 | 31 | Toasts sit above the bottom bar on the table, not on top of it. | Nothing should hide the controls. | Done |
 
 ## E. Game over
 
 | # | Change | Why | Status |
 |---|--------|-----|--------|
-| 32 | "Share result on WhatsApp" after a game. | Every finished game can bring a new player. | Built |
+| 32 | "Share result on WhatsApp" after a game. | Every finished game can bring a new player. | Done |
 | 33 | Game over with AI singers: "Play again" is the one primary for the host. | Keeps the fun going. | Done |
 
 ## F. Look and feel
@@ -71,7 +71,7 @@ Status: **Done** = built and checked in the browser (phone size) and by the test
 | 34 | Secondary buttons become neutral white outlines; teal only means "live" (mic on, online). | Colour should carry meaning, not decoration. | Done |
 | 35 | Respect iPhone safe areas for the bottom bar. | The bar must not sit under the home indicator. | Built |
 | 36 | Quick-chat chips at least 40 px tall. | Easy to tap. | Done |
-| 37 | A slim "Reconnecting…" bar instead of repeated toasts. | Calm, clear status. | Built |
+| 37 | A slim "Reconnecting…" bar instead of repeated toasts. | Calm, clear status. | Done |
 | 38 | Avatars drawn in the browser, not loaded from an outside service. | Faster, works offline, and names are no longer sent to another company. | Done |
 
 ## Also fixed after looking at the screenshots
@@ -86,24 +86,33 @@ Status: **Done** = built and checked in the browser (phone size) and by the test
 | Lobby shows 6 AI singers with "See all 12"; choice cards are compact rows | Done |
 | Box under the circle says what to do ("Listen and cheer"), not who is singing again | Done |
 
+## H. Shorter screens (15 Nov)
+
+| Change | Status |
+|--------|--------|
+| Home fits one phone screen: Play now, two small choices, one row of round AI singer avatars | Done |
+| This week and How to play open as small pop-ups instead of long boxes | Done |
+| Join screen: title, one line, name box; the three notes removed | Done |
+| Shorter messages on the table screens | Done |
+
 ## G. Later (needs more time, money or accounts)
 
 | # | Change | Why | Status |
 |---|--------|-----|--------|
 | 39 | Real sung audio for the 101 library songs. | Speech is not singing. Needs a singing service with commercial rights. | Open |
-| 40 | Hindi/Marathi letter display toggle wired to the letter in the middle. | Setting exists but is not shown on the stage. | Open |
-| 41 | Dhun, Decade and Actor rules checked by the table vote prompt. | Themes are labels only today. | Open |
+| 40 | Hindi/Marathi letter display toggle wired to the letter in the middle. | Setting exists but is not shown on the stage. | Done |
+| 41 | Dhun, Decade and Actor rules checked by the table vote prompt. | Themes are labels only today. | Done |
 | 42 | Your own TURN relay before public launch. | Voice on mobile data depends on it. | Open |
 | 43 | Saved data survives host restarts (database). | Free hosting resets files. | Open |
 | 44 | Play Store and App Store apps. | Needs developer accounts. | Open |
-| 45 | Friends list: see when people you follow are online, invite in one tap. | Brings people back. | Open |
-| 46 | Daily streak and a gentle reminder to come back. | Habit. | Open |
-| 47 | Short tutorial the first time someone gets a turn. | Teaches by doing. | Open |
-| 48 | Song suggestions from the library as hints, not just film titles. | Hints should help anyone. | Open |
-| 49 | Rooms by language (Hindi, Marathi, English). | People find their crowd. | Open |
-| 50 | Host can lock a table to invited people only. | Privacy for family games. | Open |
-| 51 | Report and block reachable from every chat message. | Safety at scale. | Open |
-| 52 | Profanity filter for chat and names. | Safety at scale. | Open |
-| 53 | Weekly winner shown on the home screen. | Social proof. | Open |
-| 54 | Audio level meter on each seat while people talk. | Shows who is speaking. | Open |
-| 55 | Offline page when there is no internet. | Clear message instead of a broken screen. | Open |
+| 45 | Friends list: see when people you follow are online, invite in one tap. | Brings people back. | Done |
+| 46 | Daily streak and a gentle reminder to come back. | Habit. | Done (streak; no reminder notifications yet) |
+| 47 | Short tutorial the first time someone gets a turn. | Teaches by doing. | Done |
+| 48 | Song suggestions from the library as hints, not just film titles. | Hints should help anyone. | Done |
+| 49 | Rooms by language (Hindi, Marathi, English). | People find their crowd. | Done (language shown on each open table) |
+| 50 | Host can lock a table to invited people only. | Privacy for family games. | Done |
+| 51 | Report and block reachable from every chat message. | Safety at scale. | Done |
+| 52 | Profanity filter for chat and names. | Safety at scale. | Done |
+| 53 | Weekly winner shown on the home screen. | Social proof. | Done |
+| 54 | Audio level meter on each seat while people talk. | Shows who is speaking. | Done |
+| 55 | Offline page when there is no internet. | Clear message instead of a broken screen. | Done |

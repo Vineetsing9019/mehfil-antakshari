@@ -297,52 +297,36 @@ function loadBoard() {
 setInterval(() => { if (!S.table && S.named) loadBoard(); }, 60000);
 
 /* ---------- lobby ---------- */
-function statusText(p) {
-  if (p.status === 'playing') return 'Singing in a game';
-  if (p.status === 'jam') return 'In a jam';
-  if (p.status === 'room') return 'At a table';
-  return 'Free to sing';
-}
-// One person card: avatar, name, status, and a small Invite button (secondary, never orange).
-function personCard(p) {
-  const canInvite = p.status === 'free' && !S.sent.has(p.token);
-  const btn = canInvite
-    ? `<button class="btn btn-line btn-sm" data-act="req" data-arg="${esc(p.token)}">Invite</button>`
-    : `<span class="pstate">${S.sent.has(p.token) ? 'Invited' : 'Busy'}</span>`;
-  return `<div class="icard" data-act="profile" data-arg="${esc(p.token)}">${av(p)}
-    <div class="who"><div class="nm">${esc(p.name)}${p.bot ? '<span class="aib">AI</span>' : p.verified ? '<span class="tick">✓</span>' : ''}${p.followed ? '<span class="fol">★ Following</span>' : ''}</div>
-    <div class="hd">${p.bot ? esc(p.bio || 'AI singer') : '@' + esc(p.handle) + (p.city ? ' · ' + esc(p.city) : '')}</div>
-    ${p.bot ? '' : `<div class="st ${p.status === 'free' ? '' : 'busy'}">${statusText(p)}</div>`}</div>
-    <div class="col">${btn}</div></div>`;
+// One round avatar in a row, like Instagram stories. Tap it to open the profile (Invite is there).
+function storyHtml(p) {
+  const name = p.bot ? p.name.split(' ')[0] : p.handle;
+  return `<button class="story" data-act="profile" data-arg="${esc(p.token)}" aria-label="${esc(p.name)}">
+    <span class="ringed ${p.status === 'free' ? '' : 'busy'}">${av(p)}</span>
+    <small>${p.bot ? '<span class="aib">AI</span>' : ''}${esc(name)}</small></button>`;
 }
 function renderLobby() {
   if (S.table) return;
   const first = (S.me?.name || '').split(' ')[0];
   const streak = S.me?.streak || 0;
-  $('#hello').innerHTML = first ? esc(`Namaste, ${first} 👋`) + (streak >= 2 ? ` <span class="streak">🔥 ${streak} days in a row</span>` : '') : '';
+  $('#hello').innerHTML = first ? esc(`Namaste, ${first} 👋`) + (streak >= 2 ? ` <span class="streak">🔥 ${streak} days</span>` : '') : '';
   // Open tables: only shown when there are some.
   $('#tables-card').hidden = !S.lobby.tables.length;
-  $('#lobby-tables').innerHTML = S.lobby.tables.map(t => `<div class="tcard"><div><b>${t.type === 'jam' ? '🎶 Sing together' : '🎤 Antakshari'}</b><small>Host: ${esc(t.host)} · ${t.count}/${t.max}${t.theme ? ' · ' + esc(t.theme) : ''}${t.lang ? ' · ' + esc(t.lang) : ''}${t.state === 'playing' ? ' · game on, join to listen' : ''}</small></div><button class="btn btn-line btn-sm" data-act="join-tap" data-arg="${esc(t.code)}">Join</button></div>`).join('');
-  // Real people and AI singers are always shown apart.
+  $('#lobby-tables').innerHTML = S.lobby.tables.map(t => `<div class="tcard"><div><b>${t.type === 'jam' ? '🎶 Sing together' : '🎤 Antakshari'}</b><small>${esc(t.host)} · ${t.count}/${t.max}${t.lang ? ' · ' + esc(t.lang) : ''}${t.state === 'playing' ? ' · game on' : ''}</small></div><button class="btn btn-line btn-sm" data-act="join-tap" data-arg="${esc(t.code)}">Join</button></div>`).join('');
+  // Real people and AI singers are always in separate rows.
   const humans = S.lobby.people.filter(p => !p.bot), ais = S.lobby.people.filter(p => p.bot);
   $('#friends-card').hidden = !humans.length;
-  $('#search').hidden = humans.length <= 8;
-  const q = $('#search').hidden ? '' : ($('#search').value || '').trim().toLowerCase();
-  const list = humans.filter(p => (p.name + ' ' + p.handle).toLowerCase().includes(q));
   $('#online-count').textContent = humans.length ? `· ${humans.length}` : '';
-  $('#stories').innerHTML = humans.filter(p => p.status === 'free').slice(0, 20).map(p =>
-    `<button class="story" data-act="profile" data-arg="${esc(p.token)}" aria-label="${esc(p.name)}"><span class="ringed">${av(p)}</span><small>${esc(p.handle)}</small></button>`).join('');
-  $('#people').innerHTML = list.length ? list.map(personCard).join('') : '<div class="empty">No one matches your search</div>';
-  // Six AI singers are enough to choose from; the rest are one tap away.
-  const shown = S.showAllAI ? ais : ais.slice(0, 6);
-  $('#ai-people').innerHTML = shown.map(personCard).join('')
-    + (ais.length > shown.length ? `<button class="btn btn-text btn-sm more-ai" data-act="all-ai">See all ${ais.length} AI singers</button>` : '');
-  renderBoard();
+  $('#stories').innerHTML = humans.slice(0, 30).map(storyHtml).join('');
+  $('#ai-people').innerHTML = ais.map(storyHtml).join('');
+}
+function boardHtml() {
+  return S.board.length
+    ? S.board.map((r, i) => `<li class="${i === 0 ? 'top' : ''}"><span>${i === 0 ? '👑' : i + 1 + '.'}</span><b>${esc(r.name)}</b><b>${r.points}</b></li>`).join('')
+    : '<li class="board-empty">No scores yet this week. Win a song to be first.</li>';
 }
 function renderBoard() {
-  $('#board').innerHTML = S.board.length
-    ? S.board.map((r, i) => `<li class="${i === 0 ? 'top' : ''}"><span>${i === 0 ? '👑' : i + 1 + '.'}</span><b>${esc(r.name)}</b><span class="muted">@${esc(r.handle)}</span><b>${r.points}</b></li>`).join('')
-    : '<li class="board-empty">No scores yet this week.<br>Win a song to be first on the board.</li>';
+  const list = $('#modal-root .board-list');
+  if (list) list.innerHTML = boardHtml();
 }
 
 /* ---------- profile form (create and edit) ---------- */
@@ -482,7 +466,7 @@ function openProfile(token) {
     ${p.posts?.length ? `<div class="pgrid">${p.posts.map(u => `<div class="tile"><img src="${esc(u)}" alt="Photo" data-act="lightbox" data-arg="${esc(u)}"></div>`).join('')}</div>` : `<p class="muted">${isMe ? 'Add photos so friends can see you 📸' : 'No photos yet'}</p>`}
     <div class="row">
       ${isMe ? `<button class="btn btn-primary" data-act="edit-profile">Edit profile</button><button class="btn btn-line" data-act="copy-profile">Copy my link</button>`
-        : `${!busy && !S.sent.has(token) && !S.table ? `<button class="btn btn-primary" data-act="req" data-arg="${esc(token)}">Request to sing</button>` : ''}
+        : `${!busy && !S.sent.has(token) && !S.table ? `<button class="btn btn-primary" data-act="req" data-arg="${esc(token)}">Invite to sing</button>` : ''}
            <button class="btn btn-line" data-act="follow" data-arg="${esc(token)}">${followed ? 'Following ✓' : 'Follow'}</button>`}
     </div>
     <div class="row" style="margin-top:10px">
@@ -711,24 +695,21 @@ function renderAction() {
       return;
     }
     const listener = myMember(v)?.role === 'listener';
-    box.innerHTML = `<div class="act-title">${listener ? 'You are listening 🎧' : 'Listen and cheer 👏'}</div>
-      <p class="lead">${listener ? 'You can sing in the next round. Tap React to cheer.' : 'Tap React to cheer, and think of a song for the letter they end on.'}</p>`;
+    box.innerHTML = `<div class="act-title">${listener ? 'Listening 🎧 · you sing next round' : 'Listen and cheer 👏'}</div>`;
     return;
   }
   if (v.state === 'over') {
-    box.innerHTML = `<div class="act-title">Game over</div><p class="lead">${v.isHost ? 'Press Play again at the top to start another round.' : 'Waiting for the host to start another round.'}</p>`;
+    box.innerHTML = `<div class="act-title">${v.isHost ? 'Game over. Play again ↑' : 'Game over'}</div>`;
     return;
   }
   if (!v.isHost) {
-    box.innerHTML = `<div class="act-title">Waiting for the host</div>
-      <p class="lead">The game starts when the host presses Start. Say hello in chat!</p>`;
+    box.innerHTML = `<div class="act-title">Waiting for the host to start</div>`;
     return;
   }
   // Waiting room for the host. Alone: sharing is the one primary action.
   // With 2 or more: Start game (at the top) is the primary, so these become secondary.
   const alone = v.members.length < 2;
-  box.innerHTML = `<div class="act-title">${alone ? 'Invite your singers' : `${v.members.length} singers in. Ready?`}</div>
-    <p class="lead">${alone ? 'Friends join from your link. AI singers join at once.' : 'Press Start game at the top, or invite more (up to 6).'}</p>
+  box.innerHTML = `<div class="act-title">${alone ? 'Who is singing?' : `${v.members.length} in. Press Start ↑`}</div>
     <div class="row">
       <button class="btn ${alone ? 'btn-primary' : 'btn-line'}" data-act="share-wa">Invite on WhatsApp</button>
       <button class="btn btn-line btn-sm" data-act="add-bot">🤖 Add AI singer</button>
@@ -1009,7 +990,8 @@ const ACT = {
   'add-bot': () => socket.emit('table:addbot'),
   'toggle-private': () => socket.emit('table:settings', { settings: { private: !S.table.settings.private } }),
   'chat-profile': arg => { closeSheet(); openProfile(arg); },
-  'all-ai': () => { S.showAllAI = true; renderLobby(); },
+  board: () => modal('<h3>🏆 This week</h3><ol class="board-list">' + boardHtml() + '</ol><div class="row"><button class="btn btn-primary" data-act="close">OK</button></div>'),
+  howto: () => modal('<h3>How to play</h3><ol class="howto"><li>Sing a song that starts with the big letter.</li><li>Type its name. Its last letter goes to the next singer.</li><li>Everyone votes. Last singer standing wins.</li></ol><div class="row"><button class="btn btn-primary" data-act="close">Got it</button></div>'),
   'show-code': () => { $('#code-form').hidden = false; $('#show-code').hidden = true; $('#code-in').focus(); },
   'join-tap': arg => joinCode(arg),
   req: arg => { socket.emit('invite', { token: arg }); S.sent.add(arg); closeModal(); if (!S.table) renderLobby(); },
@@ -1157,7 +1139,7 @@ document.addEventListener('submit', e => {
     $('#q-in').value = '';
   }
 });
-$('#search')?.addEventListener('input', () => renderLobby());
+
 
 /* ---------- ambient loop, music preference and boot ---------- */
 // Each person's seat glows teal with their voice, so you can see who is talking.

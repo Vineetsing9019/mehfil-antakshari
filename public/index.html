@@ -62,78 +62,52 @@
   <section id="screen-join" class="screen" hidden>
     <div class="join">
       <p class="invite-note" id="join-invite" hidden></p>
-      <h1 class="hero-line">Play Antakshari with friends, anywhere.</h1>
-      <p class="sub">Sing a song, pass on its last letter, keep the mehfil going.</p>
+      <h1 class="hero-line">Play Antakshari with friends</h1>
+      <p class="sub">Sing a song. Pass its last letter.</p>
       <div class="card join-card"><div id="form-join"></div></div>
-      <ul class="notes">
-        <li>🎙 Talk and sing like a call</li>
-        <li>🤖 AI singers ready anytime</li>
-        <li>🔗 Friends join from WhatsApp</li>
-      </ul>
-      <details class="about card">
+      <details class="about">
         <summary>About Mehfil</summary>
-        <h2 class="card-title">Mehfil: play Antakshari online</h2>
-        <p>Mehfil is a free online Antakshari game for friends and families. Start a table, share the link on WhatsApp, and take turns singing Hindi film songs. Each singer starts with the letter the last singer ended on, and the table votes on every song.</p>
-        <p>No friends online? Play with AI singers, who sing original Mehfil songs out loud. You can also open a Sing together table for up to 8 people, with a song queue, chat and emoji reactions. Mehfil works in any browser, and you can add it to your phone's home screen.</p>
+        <p>Mehfil is a free online Antakshari game. Start a table, share the link on WhatsApp, and take turns singing Hindi film songs. Each singer starts with the letter the last singer ended on, and the table votes on every song. No friends online? Play with AI singers. Or open a Sing together table for up to 8 people. Works in any browser.</p>
       </details>
-      <p class="fine">For ages 13 and up. Your name is shown to other singers. <a href="#" data-act="privacy">Privacy</a></p>
+      <p class="fine">13+. Your name is shown to other singers. <a href="#" data-act="privacy">Privacy</a></p>
     </div>
   </section>
 
-  <!-- LOBBY -->
+  <!-- HOME: fits one phone screen. One primary (Play now); everything else is small. -->
   <section id="screen-lobby" class="screen" hidden>
-    <div class="grid-lobby">
-      <div class="main-col">
-        <div class="card start">
-          <p class="hello" id="hello"></p>
-          <h2 class="start-title">Ready to sing?</h2>
-          <button class="btn btn-primary btn-block btn-xl" data-act="quick-play"><span>▶ Play now</span><small>with 2 AI singers, starts at once</small></button>
-          <div class="start-row">
-            <button class="mode" data-act="start-game">
-              <span class="mode-ico">🎤</span><b>Play with friends</b><small>Antakshari · 2 to 6 singers</small>
-            </button>
-            <button class="mode" data-act="start-jam">
-              <span class="mode-ico">🎶</span><b>Sing together</b><small>Like a call · up to 8 people</small>
-            </button>
-          </div>
-          <button class="btn btn-text btn-sm code-toggle" data-act="show-code" id="show-code">Have a table code?</button>
-          <form class="code-row" data-form="join-code" id="code-form" hidden>
-            <input id="code-in" maxlength="6" placeholder="Enter code" autocomplete="off" aria-label="Table code">
-            <button class="btn btn-line" type="submit">Join</button>
-          </form>
+    <div class="home">
+      <div class="card start">
+        <p class="hello" id="hello"></p>
+        <button class="btn btn-primary btn-block btn-xl" data-act="quick-play"><span>▶ Play now</span><small>with AI singers</small></button>
+        <div class="start-row">
+          <button class="mode" data-act="start-game"><span class="mode-ico">🎤</span><b>Play with friends</b></button>
+          <button class="mode" data-act="start-jam"><span class="mode-ico">🎶</span><b>Sing together</b></button>
         </div>
-
-        <div class="card" id="tables-card" hidden>
-          <div class="sechead"><h2 class="card-title">Open tables</h2></div>
-          <div id="lobby-tables" class="tlist"></div>
-        </div>
-
-        <div class="card" id="friends-card" hidden>
-          <div class="sechead"><h2 class="card-title"><span class="dot"></span>Friends online <span class="muted" id="online-count"></span></h2>
-            <input class="search" id="search" placeholder="Search" aria-label="Search singers" hidden></div>
-          <div class="stories" id="stories"></div>
-          <div id="people" class="people"></div>
-        </div>
-
-        <div class="card">
-          <div class="sechead"><h2 class="card-title">🤖 AI singers</h2><span class="muted">Always free to sing</span></div>
-          <div id="ai-people" class="people ai-people"></div>
-        </div>
+        <button class="btn btn-text btn-sm code-toggle" data-act="show-code" id="show-code">Have a code?</button>
+        <form class="code-row" data-form="join-code" id="code-form" hidden>
+          <input id="code-in" maxlength="6" placeholder="Enter code" autocomplete="off" aria-label="Table code">
+          <button class="btn btn-line" type="submit">Join</button>
+        </form>
       </div>
 
-      <div class="side-col">
-        <div class="card">
-          <div class="sechead"><h2 class="card-title">🏆 This week</h2></div>
-          <ol class="board-list" id="board"></ol>
-        </div>
-        <div class="card how">
-          <h3>How to play</h3>
-          <ol>
-            <li>Sing a song that starts with the big letter.</li>
-            <li>Type its name. Its last letter goes to the next singer.</li>
-            <li>The table votes 👍 or 👎. Last singer standing wins.</li>
-          </ol>
-        </div>
+      <div class="card slim" id="tables-card" hidden>
+        <h2 class="row-title">Open tables</h2>
+        <div id="lobby-tables" class="tlist"></div>
+      </div>
+
+      <div class="card slim" id="friends-card" hidden>
+        <h2 class="row-title"><span class="dot"></span>Friends online <span class="muted" id="online-count"></span></h2>
+        <div class="stories" id="stories"></div>
+      </div>
+
+      <div class="card slim">
+        <h2 class="row-title">🤖 AI singers</h2>
+        <div class="stories" id="ai-people"></div>
+      </div>
+
+      <div class="home-links">
+        <button class="btn btn-text btn-sm" data-act="board">🏆 This week</button>
+        <button class="btn btn-text btn-sm" data-act="howto">❓ How to play</button>
       </div>
     </div>
   </section>
