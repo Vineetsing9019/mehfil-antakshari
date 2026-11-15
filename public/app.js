@@ -52,7 +52,11 @@ function makeToken() {
   return [...a].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 S.token = store.get('ak-token');
+const firstVisit = !S.token;
 if (!S.token) { S.token = makeToken(); store.set('ak-token', S.token); }
+// The last profile and AI singers seen, so a returning singer's home shows before the server answers.
+const cached = (() => { try { return JSON.parse(store.get('ak-me') || 'null'); } catch { return null; } })();
+const remember = () => { if (S.me && S.named) store.set('ak-me', JSON.stringify({ me: S.me, ai: S.lobby.people.filter(p => p.bot) })); };
 
 /* ---------- audio ---------- */
 function audioCtx() {
@@ -268,6 +272,8 @@ socket.on('connect', () => { $('#netbar').hidden = true; socket.emit('hello', { 
 socket.on('disconnect', () => { $('#netbar').hidden = false; });
 socket.on('me', m => {
   S.me = m.profile; S.named = m.named;
+  if (!S.named) store.set('ak-me', '');
+  remember();
   renderMe();
   if (!S.named) { showJoin(); return; }
   if (!S.table) showLobby();
@@ -286,7 +292,7 @@ socket.on('profile:deleted', () => {
   toast('Your profile was deleted');
   showJoin();
 });
-socket.on('lobby', d => { S.lobby = d; if (!S.table) renderLobby(); else if (S.sheet === 'singers') renderInviteList(); });
+socket.on('lobby', d => { S.lobby = d; remember(); if (!S.table) renderLobby(); else if (S.sheet === 'singers') renderInviteList(); });
 socket.on('table', v => {
   if (!v) { leaveLocal(); return; }
   S.table = v;
@@ -307,7 +313,7 @@ socket.on('chat', ({ table, msg }) => {
   renderDock();
 });
 socket.on('react', ({ from, emoji }) => floatEmoji(emoji, from));
-socket.on('me:update', p => { S.me = p; renderMe(); if (!S.table) renderLobby(); });
+socket.on('me:update', p => { S.me = p; remember(); renderMe(); if (!S.table) renderLobby(); });
 socket.on('badge', b => {
   const el = document.createElement('div');
   el.className = 'badgepop';
@@ -338,10 +344,12 @@ socket.on('rtc', ({ from, data }) => handleRtc(from, data));
 
 /* ---------- navigation ---------- */
 function showJoin() {
+  const already = !$('#screen-join').hidden && S.form?.mode === 'create';
   show('join');
   const note = $('#join-invite');
   note.hidden = !S.pendingCode;
   if (S.pendingCode) note.textContent = `🎤 You're invited to table ${S.pendingCode}. Type your name to join.`;
+  if (already) return;
   renderProfileForm('#form-join', { mode: 'create' });
   setTimeout(() => $('#form-join [data-f=name]')?.focus(), 50);
 }
@@ -391,10 +399,12 @@ function renderLobby() {
   $('#lobby-tables').innerHTML = S.lobby.tables.map(t => `<div class="tcard"><div><b>${t.type === 'jam' ? '🎶 Sing together' : '🎤 Antakshari'}</b><small>${esc(t.host)} · ${t.count}/${t.max}${t.lang ? ' · ' + esc(t.lang) : ''}${t.state === 'playing' ? ' · game on' : ''}</small></div><button class="btn btn-line btn-sm" data-act="join-tap" data-arg="${esc(t.code)}">Join</button></div>`).join('');
   // Real people and AI singers are always in separate rows.
   const humans = S.lobby.people.filter(p => !p.bot), ais = S.lobby.people.filter(p => p.bot);
-  $('#friends-card').hidden = !humans.length;
+  // One row: friends who are online first (green ring), then the AI singers.
+  $('#friends-card').hidden = true;
+  $('#singers-title').innerHTML = humans.length ? `<span class="dot"></span>Singers online <span class="muted">· ${humans.length + ais.length}</span>` : 'Singers';
   $('#online-count').textContent = humans.length ? `· ${humans.length}` : '';
   $('#stories').innerHTML = humans.slice(0, 30).map(storyHtml).join('');
-  $('#ai-people').innerHTML = ais.map(storyHtml).join('');
+  $('#ai-people').innerHTML = [...humans, ...ais].map(storyHtml).join('');
 }
 function boardHtml() {
   return S.board.length
@@ -736,7 +746,7 @@ function renderAction() {
       <form class="queue-row" data-form="queue"><input id="q-in" maxlength="80" placeholder="Add a song to the queue" autocomplete="off" aria-label="Song title"><button class="btn btn-line btn-sm" type="submit">Add</button></form>
       <div class="queue">${v.queue.length ? v.queue.map(q => `<div class="q"><span>${esc(q.title)}</span><small>${esc(q.name)}</small></div>`).join('') : '<div class="muted">The queue is empty</div>'}</div>
       <div class="row"><button class="btn btn-primary btn-sm" data-act="stage">${v.stage === S.token ? 'Step down' : '🎤 Take the stage'}</button><button class="btn btn-line btn-sm" data-act="queue-next">Next song ▶</button></div>
-      ${v.members.length < 2 ? '<div class="row"><button class="btn btn-line btn-sm" data-act="share-wa">Invite on WhatsApp</button><button class="btn btn-text btn-sm" data-act="copy">Copy link</button></div>' : ''}`;
+      ${v.members.length < 2 ? '<div class="row"><button class="btn btn-line btn-sm" data-act="share-wa">' + inviteLabel() + '</button><button class="btn btn-text btn-sm" data-act="copy">Copy link</button></div>' : ''}`;
     return;
   }
   if (v.state === 'playing') {
@@ -808,7 +818,7 @@ function renderAction() {
   const alone = v.members.length < 2;
   box.innerHTML = `<div class="act-title">${alone ? 'Who is singing?' : `${v.members.length} in. Press Start ↑`}</div>
     <div class="row">
-      <button class="btn ${alone ? 'btn-primary' : 'btn-line'}" data-act="share-wa">Invite on WhatsApp</button>
+      <button class="btn ${alone ? 'btn-primary' : 'btn-line'}" data-act="share-wa">${inviteLabel()}</button>
       <button class="btn btn-line btn-sm" data-act="add-bot">🤖 Add AI singer</button>
     </div>
     <div class="row"><button class="btn btn-text btn-sm" data-act="invite-name">Invite by name</button><button class="btn btn-text btn-sm" data-act="copy">Copy link</button></div>`;
@@ -1225,6 +1235,8 @@ const ACT = {
   },
   copy: () => { if (S.table) copy(`${location.origin}/?t=${S.table.code}`, 'Table link copied'); },
 };
+// Phones with a share sheet get it (WhatsApp, Instagram, SMS…); others go straight to WhatsApp.
+const inviteLabel = () => (navigator.share ? 'Invite friends' : 'Invite on WhatsApp');
 function shareLink(text, url) {
   if (navigator.share) return navigator.share({ title: 'Mehfil', text, url }).catch(() => {});
   window.open(`https://wa.me/?text=${encodeURIComponent(text + ' ' + url)}`, '_blank', 'noopener');
@@ -1317,6 +1329,7 @@ S.iceReady = fetch('/config').then(r => r.json()).then(c => { S.ice = c.iceServe
 document.addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('[role=button][data-act]')) { e.preventDefault(); e.target.click(); }
 });
-show('boot');
+if (firstVisit || !cached) showJoin();
+else { S.me = cached.me; S.named = true; S.lobby = { people: cached.ai || [], tables: [] }; renderMe(); showLobby(); }
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 })();

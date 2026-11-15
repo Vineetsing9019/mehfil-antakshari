@@ -41,6 +41,7 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const IMG_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 
 const app = express();
+app.use(require('compression')()); // gzip: pages and scripts download 3-4x smaller
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Voice relay for phones on mobile data: set ICE_SERVERS on the host as a JSON list of TURN servers.

@@ -1,7 +1,9 @@
-// Service worker: makes Mehfil installable and opens the app shell without internet.
-// Live play (Socket.IO) always needs the network; everything else is network-first with a saved copy.
-const CACHE = 'mehfil-v3';
-const SHELL = ['/', '/app.css', '/app.js', '/socket.io/socket.io.js', '/manifest.json', '/icon-192.png'];
+// Service worker: Mehfil opens instantly on later visits and works without internet.
+// App files (page, script, styles, icons) come from the saved copy at once and are refreshed in the background,
+// so a new version shows on the next visit. Live play and data (Socket.IO, /config, /leaderboard, photos) always use the network.
+const CACHE = 'mehfil-v5';
+const SHELL = ['/', '/app.css', '/app.js', '/socket.io/socket.io.min.js', '/manifest.json', '/icon-192.png'];
+const APP_FILE = /\.(js|css|png|svg|json|ico|woff2?)$/;
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {}).then(() => self.skipWaiting()));
@@ -14,13 +16,23 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const req = e.request;
   const url = new URL(req.url);
-  // Live connections are never cached; the connection library file itself is, so the page opens offline.
-  const live = url.pathname.startsWith('/socket.io/') && url.pathname !== '/socket.io/socket.io.js';
-  if (req.method !== 'GET' || url.origin !== self.location.origin || live) return;
-  e.respondWith(fetch(req)
-    .then(res => {
-      if (res.ok && res.type === 'basic') { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
-      return res;
-    })
-    .catch(() => caches.match(req).then(hit => hit || (req.mode === 'navigate' ? caches.match('/') : undefined))));
+  if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+  const live = url.pathname.startsWith('/socket.io/') && !url.pathname.startsWith('/socket.io/socket.io');
+  const data = /^\/(config|leaderboard|qr|p)\b/.test(url.pathname);
+  if (live) return;
+  // the page itself: any link (/?t=CODE too) opens the saved page; the app reads the link itself
+  const key = req.mode === 'navigate' ? '/' : req;
+  const fresh = fetch(req).then(res => {
+    if (res.ok && res.type === 'basic' && !data) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(key, copy)); }
+    return res;
+  });
+  if (data) { e.respondWith(fresh.catch(() => caches.match(req))); return; }
+  if (req.mode === 'navigate' || APP_FILE.test(url.pathname)) {
+    e.respondWith(caches.match(key).then(hit => {
+      if (hit) { e.waitUntil(fresh.catch(() => {})); return hit; }
+      return fresh.catch(() => caches.match('/'));
+    }));
+    return;
+  }
+  e.respondWith(fresh.catch(() => caches.match(req)));
 });
