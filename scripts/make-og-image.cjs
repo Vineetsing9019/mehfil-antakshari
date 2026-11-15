@@ -3,6 +3,8 @@
 const path = require('path');
 const puppeteer = require(process.env.PUPPETEER_CORE || 'puppeteer-core');
 
+// The Mehfil logo (the app icon), embedded so the picture needs no other files.
+const LOGO = 'data:image/png;base64,' + require('fs').readFileSync(path.join(__dirname, '..', 'public', 'icon-192.png')).toString('base64');
 const html = `<!doctype html><html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Yatra+One&display=block" rel="stylesheet">
 <style>
@@ -20,7 +22,9 @@ const html = `<!doctype html><html><head><meta charset="utf-8">
     filter:drop-shadow(0 0 22px rgba(255,193,69,.55))}
   .note{position:absolute;right:32px;top:70px;font-size:96px;color:#ff4f9a;transform:rotate(12deg);text-shadow:0 0 24px rgba(255,79,154,.7);z-index:3;font-family:Arial,sans-serif}
   .copy{position:absolute;left:80px;top:80px;width:560px;z-index:2}
-  .hi{font-family:"Yatra One",serif;font-size:60px;color:#ff8a1f}
+  .hi{font-family:"Yatra One",serif;font-size:60px;color:#ff8a1f;display:flex;align-items:center;gap:18px}
+  .logo{width:78px;height:78px;border-radius:18px;box-shadow:0 0 24px rgba(255,193,69,.35)}
+  .mark.v{font-family:"Yatra One",serif;font-size:250px;padding-bottom:0}
   h1{font-family:"Yatra One",serif;font-weight:400;font-size:128px;line-height:1.05;margin:0 0 16px;
     background:linear-gradient(90deg,#ffc145,#ff8a1f,#ff4f9a);-webkit-background-clip:text;background-clip:text;color:transparent}
   p{font-size:32px;line-height:1.35;margin:0 0 28px;color:#fff6e9}
@@ -29,9 +33,9 @@ const html = `<!doctype html><html><head><meta charset="utf-8">
   .chip{padding:9px 16px;border-radius:999px;border:2px solid rgba(255,193,69,.6);font-size:21px;color:#ffc145;font-weight:600;white-space:nowrap}
   .foot{position:absolute;left:80px;bottom:44px;font-size:22px;letter-spacing:.2em;text-transform:uppercase;color:#c3b2d6;z-index:2}
 </style></head><body>
-  <div class="ring"><i></i></div><div class="mark">म</div><div class="note">♪</div>
+  <div class="ring"><i></i></div><div class="mark v">V</div><div class="note">♪</div>
   <div class="copy">
-    <div class="hi">मेहफ़िल</div>
+    <div class="hi"><img class="logo" src="${LOGO}" alt="">मेहफ़िल</div>
     <h1>Mehfil</h1>
     <p>Play Antakshari online with friends, or with 20 AI singers.</p>
     <div class="chips"><span class="chip">Free</span><span class="chip">No download</span><span class="chip">Join from WhatsApp</span></div>
