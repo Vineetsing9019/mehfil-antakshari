@@ -60,7 +60,7 @@ A WhatsApp button shares the link with a short message. Profiles have links `/?u
   others until uploaded by that person.
 - Every typed value is escaped on display and length-limited on the server.
 - Reports are stored and reviewed by the operator; a block is instant and private.
-- Children: the app asks nothing sensitive; a short notice says it is for ages 13 and up.
+- Age: Mehfil is for ages 16 and up. Every time the app opens it asks "Are you 16 or older?"; "No" is blocked with a kind message.
 - Terms and privacy page: what is stored (name, username, city, bio, photos, stats, reports),
   how to delete it (the Delete profile button), and who to contact.
 

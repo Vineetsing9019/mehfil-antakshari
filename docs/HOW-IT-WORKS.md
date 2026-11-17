@@ -60,6 +60,9 @@ the first screen is ready in **about 0.8 s on a first visit and 0.4 s on later v
 
 ## 5. Safety
 
+- **16+ only.** Every time Mehfil opens it asks "Are you 16 or older?" before anything else. The live connection to the
+  server only starts after "Yes", so nothing (not even an invite link) can put someone at a table before they answer.
+  "No" shows a kind message and no way in. It is asked again whenever the app is opened, but not when it refreshes itself.
 - Tables can be **link-only** (not listed for strangers). Play now games are link-only by default.
 - **Mute** one person just for yourself; **block** and **report** from any profile, including by tapping a name in chat.
 - A **bad-word filter** stars out common English, Hindi and Marathi abuse in chat, names, cities and bios.

@@ -31,7 +31,7 @@ own songs, lyrics lighting up line by line.
 - **AI singers.** 20 singers with their own voices sing 101 original songs (verse and chorus), clearly marked AI. Easy, Normal or Hard.
 - **Your turn is easy.** Type or say the song name; the next letter is worked out for you, or pick any letter A to Z.
 - **Rewards.** Points pop-ups, badges, a daily challenge letter, day streaks, a weekly leaderboard and a shareable result picture.
-- **Safe by default.** Link-only tables, mute one person, block and report, and a bad-word filter that leaves real names alone.
+- **Safe by default.** For ages 16 and up (asked every time the app opens), link-only tables, mute one person, block and report, and a bad-word filter that leaves real names alone.
 - **Fast and installable.** First screen in under a second on 4G, opens from a saved copy, works offline, installs like an app.
 
 What changed and when: [CHANGELOG.md](CHANGELOG.md). How it works inside, and the hard problems solved: [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md).

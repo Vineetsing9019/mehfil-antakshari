@@ -2,6 +2,11 @@
 
 Newest first. Every change is also in the [commit history](https://github.com/Vineetsing9019/mehfil-antakshari/commits/main).
 
+## 17 November 2026
+
+- **Mehfil is 16+.** Every time the app is opened it asks "Are you 16 or older?". Yes opens the app; No shows a kind message and nothing else works. The app does not even connect to the server until someone says yes, so an invite link cannot seat anyone who has not answered.
+- Added an MIT license.
+
 ## 15 November 2026 (late night)
 
 - **New versions show up at once.** Before, the first visit after a deploy showed the copy saved on the phone. Now the app notices a newer version and refreshes itself on home, or right after you leave a table (never in the middle of a song).

@@ -271,7 +271,7 @@ function av(p, extra = '') {
 
 /* ---------- socket ---------- */
 // Opened with no internet, the live-connection library may not load: use a stand-in so the page still works.
-const socket = typeof io === 'function' ? io({ transports: ['websocket', 'polling'] }) : { on() {}, emit() {}, connected: false };
+const socket = typeof io === 'function' ? io({ transports: ['websocket', 'polling'], autoConnect: false }) : { on() {}, emit() {}, connect() {}, connected: false };
 if (!navigator.onLine || typeof io !== 'function') {
   $('#netbar').textContent = "You're offline. Mehfil will reconnect when you're back.";
   $('#netbar').hidden = false;
@@ -1286,6 +1286,19 @@ const ACT = {
     camOn();
   },
   'cam-yes': () => { closeModal(); camOn(); },
+  'age-yes': () => {
+    try { sessionStorage.setItem(AGE_KEY, 'yes'); } catch { /* private mode: asked again next time */ }
+    $('#agegate').hidden = true;
+    socket.connect();
+    if (!$('#screen-join').hidden) setTimeout(() => $('#form-join [data-f=name]')?.focus(), 50);
+  },
+  'age-no': () => {
+    $('#agegate').innerHTML = `<div class="agebox">
+        <div class="agesad">🎤🙏</div>
+        <h2 id="age-title">Sorry, Mehfil is for 16+</h2>
+        <p>We'd love to sing with you when you turn 16. Until then, keep singing with your family and friends. The stage will be waiting! 🎶</p>
+      </div>`;
+  },
   'skip-bot': () => { S.singId++; window.speechSynthesis?.cancel(); musicBed(false); send('turn:skipbot'); },
   rematch: () => { send('rematch'); closeModal(); },
   daily: () => send('table:quick', { daily: true }),
@@ -1554,6 +1567,22 @@ S.iceReady = fetch('/config').then(r => r.json()).then(c => { S.ice = c.iceServe
 document.addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('[role=button][data-act]')) { e.preventDefault(); e.target.click(); }
 });
+// 16+ only: ask every time Mehfil is opened. Nothing connects until the answer is yes.
+const AGE_KEY = 'ak-age-ok';
+const ageOk = () => { try { return sessionStorage.getItem(AGE_KEY) === 'yes'; } catch { return false; } };
+function ageGate() {
+  const g = $('#agegate');
+  g.innerHTML = `<div class="agebox">
+      <img class="agelogo" src="/icon-192.png" alt="" width="72" height="72">
+      <h2 id="age-title">Are you 16 or older?</h2>
+      <p>Mehfil is a live singing app with voice and video calls, made for people aged 16 and up.</p>
+      <button class="btn btn-primary btn-block btn-lg" data-act="age-yes">Yes, I'm 16+</button>
+      <button class="btn btn-text btn-block" data-act="age-no">No, I'm under 16</button>
+    </div>`;
+  g.hidden = false;
+  setTimeout(() => g.querySelector('[data-act=age-yes]')?.focus(), 50);
+}
+if (ageOk()) socket.connect(); else ageGate();
 if (firstVisit || !cached) showJoin();
 else { S.me = cached.me; S.named = true; S.lobby = { people: cached.ai || [], tables: [] }; renderMe(); showLobby(); }
 if ('serviceWorker' in navigator) {

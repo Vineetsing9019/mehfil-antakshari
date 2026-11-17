@@ -549,3 +549,14 @@ details.about p{text-align:left;margin-top:8px}
 .find input{width:100%;padding:11px 14px;border-radius:14px;border:1px solid var(--line);background:rgba(0,0,0,.25);min-height:44px;outline:none;margin-bottom:8px}
 .find input:focus{border-color:var(--gold)}
 .find .mrow{margin-bottom:6px}
+
+/* 16+ check: covers the whole app until answered */
+.agegate{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:20px;
+  background:radial-gradient(900px 600px at 20% 0%,#4a1466 0%,transparent 60%),radial-gradient(800px 600px at 100% 100%,#5b1a3a 0%,transparent 60%),#12061f}
+.agebox{width:min(400px,100%);text-align:center;padding:28px 22px;border-radius:26px;background:linear-gradient(160deg,#2c0f4a,#1a0830);
+  border:1px solid rgba(255,193,69,.35);box-shadow:0 30px 80px rgba(0,0,0,.6);animation:pop .4s ease}
+.agebox h2{font-size:24px;margin:12px 0 8px}
+.agebox p{color:var(--muted);font-size:15px;line-height:1.5;margin-bottom:20px}
+.agebox .btn-text{margin-top:6px}
+.agelogo{display:block;margin:0 auto;border-radius:18px;box-shadow:0 0 24px rgba(255,193,69,.3)}
+.agesad{font-size:46px}
