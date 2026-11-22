@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node tests/flow-test.js",
+    "test": "node tests/flow-test.js && node tests/design-check.js",
     "start": "node server.js",
     "make-icons": "node scripts/make-brand.cjs",
     "e2e": "node tests/e2e/run-all.cjs"
