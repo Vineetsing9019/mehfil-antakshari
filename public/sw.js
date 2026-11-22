@@ -1,8 +1,8 @@
 // Service worker: Mehfil opens instantly on later visits and works without internet.
 // App files (page, script, styles, icons) come from the saved copy at once and are refreshed in the background,
 // so a new version shows on the next visit. Live play and data (Socket.IO, /config, /leaderboard, photos) always use the network.
-const CACHE = 'mehfil-v5';
-const SHELL = ['/', '/app.css', '/app.js', '/socket.io/socket.io.min.js', '/manifest.json', '/icon-192.png'];
+const CACHE = 'mehfil-v6';
+const SHELL = ['/', '/app.css', '/theme-pro.css', '/app.js', '/socket.io/socket.io.min.js', '/manifest.json', '/icon-192.png'];
 const APP_FILE = /\.(js|css|png|svg|json|ico|woff2?)$/;
 
 self.addEventListener('install', e => {
