@@ -64,10 +64,17 @@ const check = (name, ok, detail = '') => console.log(`${ok ? 'PASS' : 'FAIL'}  $
   await wait(150);
   let opts = await A.$$eval('#song-list option', o => o.length);
   check('no suggestions after only 1 letter (no free answers)', opts === 0, String(opts));
-  await A.type('#in-song', 'a');
-  await wait(150);
-  opts = await A.$$eval('#song-list option', o => o.map(x => x.value));
-  check('suggestions appear after 2 letters', opts.length > 0 && opts.every(t => t.toLowerCase().startsWith(L.toLowerCase() + 'a')), opts.slice(0, 3).join(', '));
+  // The second letter must be one that songs in this table start with (not every pair exists,
+  // e.g. no "Ea…" songs), so try the alphabet in turn until suggestions appear.
+  let second = '', shown = [];
+  for (const v of 'abcdefghijklmnopqrstuvwxyz') {
+    await A.$eval('#in-song', e => { e.value = ''; });
+    await A.type('#in-song', L.toLowerCase() + v);
+    await wait(150);
+    shown = await A.$$eval('#song-list option', o => o.map(x => x.value));
+    if (shown.length > 0) { second = v; break; }
+  }
+  check('suggestions appear after 2 letters', shown.length > 0 && shown.every(t => t.toLowerCase().startsWith(L.toLowerCase() + second)), shown.slice(0, 3).join(', '));
   await A.$eval('#in-song', e => { e.value = ''; });
   await A.type('#in-song', `${L}aana Mera Dil`);
   await A.screenshot({ path: OUT + '31-my-turn.png' });
