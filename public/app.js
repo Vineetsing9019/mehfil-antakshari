@@ -430,6 +430,7 @@ function tableCard(t) {
 }
 function renderLobby() {
   if (S.table) return;
+  document.title = 'Mehfil: Play Antakshari with Friends';
   const first = (S.me?.name || '').split(' ')[0];
   const streak = S.me?.streak || 0;
   $('#hello').innerHTML = first ? esc(`Namaste, ${first} 👋`) + (streak >= 2 ? ` <span class="streak">🔥 ${streak} days</span>` : '') : '';
@@ -449,7 +450,9 @@ function renderLobby() {
   $('#friends-card').hidden = true;
   $('#singers-title').innerHTML = humans.length ? `<span class="dot"></span>Singers online <span class="muted">· ${humans.length + ais.length}</span>` : 'Singers';
   $('#online-count').textContent = humans.length ? `· ${humans.length}` : '';
-  $('#stories').innerHTML = humans.slice(0, 30).map(storyHtml).join('');
+  $('#stories').innerHTML = humans.length
+    ? humans.slice(0, 30).map(storyHtml).join('')
+    : '<p class="muted">No friends online right now. Use "Play with friends" to invite one.</p>';
   $('#ai-people').innerHTML = [...humans, ...ais].map(storyHtml).join('');
   renderFindList();
 }
@@ -634,6 +637,7 @@ const turnName = v => v.members.find(m => m.token === v.turn)?.name || '';
 const myMember = v => v.members.find(m => m.token === S.token);
 
 function renderTable() {
+  if (S.table?.code) document.title = `Table ${S.table.code} · Mehfil`;
   const v = S.table;
   if (!v) return;
   $('#t-type').textContent = v.type === 'jam' ? '🎶 Sing together' : '🎤 Antakshari';
