@@ -43,6 +43,18 @@ const IMG_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 
 const app = express();
 app.use(require('compression')()); // gzip: pages and scripts download 3-4x smaller
+// Basic safety headers: no MIME sniffing, no framing by other sites, no full URL (table codes) sent to other sites,
+// and camera/microphone only for Mehfil itself.
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'SAMEORIGIN',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(self), microphone=(self), geolocation=()',
+  });
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Voice relay for phones on mobile data: set ICE_SERVERS on the host as a JSON list of TURN servers.

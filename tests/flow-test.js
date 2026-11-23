@@ -46,7 +46,7 @@ function person(name, opts = {}) {
 const lastToast = st => st.toasts[st.toasts.length - 1];
 // Plain http (not fetch): fetch leaves a handle that crashes Node on Windows at exit.
 const getText = path => new Promise((res, rej) => require('http').get(URL + path, r => {
-  let body = ''; r.on('data', c => { body += c; }); r.on('end', () => res({ status: r.statusCode, body }));
+  let body = ''; r.on('data', c => { body += c; }); r.on('end', () => res({ status: r.statusCode, body, headers: r.headers }));
 }).on('error', rej));
 const msgs = { seen: 0 };
 
@@ -378,6 +378,12 @@ async function main() {
     Pa.s.emit('table:settings', { settings: { private: true } });
     await wait(400);
     check('a friend at a link-only table: the code is not shared', seen() && seen().tableCode === null, String(seen()?.tableCode));
+
+    console.log('\n14. Safety headers');
+    const page = await getText('/');
+    check('pages are not sniffed or framed by other sites', page.headers['x-content-type-options'] === 'nosniff' && page.headers['x-frame-options'] === 'SAMEORIGIN', JSON.stringify(page.headers['x-frame-options']));
+    check('the server does not say it runs Express', !page.headers['x-powered-by']);
+    check('camera and microphone only for Mehfil itself', /camera=\(self\)/.test(page.headers['permissions-policy'] || ''));
 
     for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G, Q, R, Lk, Ob, Bw, jamH, Dy, Fr, Hs, Gs, V1, ...vs, Pa, Pb]) p.s.close();
   } catch (err) {
