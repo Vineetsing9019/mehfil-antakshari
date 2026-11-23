@@ -1,17 +1,32 @@
 {
   "name": "antakshari",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Mehfil: play Antakshari online with friends or AI singers. Real-time tables, voice and video, voting and chat (Node, Express, Socket.IO, WebRTC).",
+  "main": "server.js",
   "scripts": {
     "test": "node tests/flow-test.js && node tests/design-check.js",
     "start": "node server.js",
     "make-icons": "node scripts/make-brand.cjs",
     "e2e": "node tests/e2e/run-all.cjs"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "antakshari",
+    "socket.io",
+    "webrtc",
+    "multiplayer",
+    "pwa",
+    "express"
+  ],
+  "author": "Vineetsing Girase",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Vineetsing9019/mehfil-antakshari.git"
+  },
+  "homepage": "https://mehfil-antakshari.onrender.com/",
+  "engines": {
+    "node": ">=20"
+  },
   "type": "commonjs",
   "dependencies": {
     "compression": "^1.7.5",
