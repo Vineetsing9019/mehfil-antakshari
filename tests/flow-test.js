@@ -383,6 +383,8 @@ async function main() {
     const page = await getText('/');
     check('pages are not sniffed or framed by other sites', page.headers['x-content-type-options'] === 'nosniff' && page.headers['x-frame-options'] === 'SAMEORIGIN', JSON.stringify(page.headers['x-frame-options']));
     check('the server does not say it runs Express', !page.headers['x-powered-by']);
+    const health = await getText('/healthz');
+    check('health check answers ok and is never cached', health.status === 200 && JSON.parse(health.body).ok === true && health.headers['cache-control'] === 'no-store', health.body);
     check('camera and microphone only for Mehfil itself', /camera=\(self\)/.test(page.headers['permissions-policy'] || ''));
 
     for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G, Q, R, Lk, Ob, Bw, jamH, Dy, Fr, Hs, Gs, V1, ...vs, Pa, Pb]) p.s.close();

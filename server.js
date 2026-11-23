@@ -62,7 +62,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Replace it with your own TURN service (set ICE_SERVERS on the host) before a public launch.
 const DEFAULT_TURN = [{ urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' }];
 const EXTRA_ICE = (() => { try { return process.env.ICE_SERVERS ? JSON.parse(process.env.ICE_SERVERS) : DEFAULT_TURN; } catch { return DEFAULT_TURN; } })();
-app.get('/config', (req, res) => res.json({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, ...EXTRA_ICE] }));
+// Health check for the host (Render pings it): cheap, no data, never cached.
+const STARTED = Date.now();
+app.get('/healthz', (req, res) => res.set('Cache-Control', 'no-store').json({ ok: true, uptimeSec: Math.round((Date.now() - STARTED) / 1000) }));
+app.get('/config',(req, res) => res.json({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, ...EXTRA_ICE] }));
 
 const httpServer = http.createServer(app);
 const pems = selfsigned.generate([{ name: 'commonName', value: 'antakshari.local' }], { days: 365, keySize: 2048 });

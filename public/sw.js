@@ -18,7 +18,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
   const live = url.pathname.startsWith('/socket.io/') && !url.pathname.startsWith('/socket.io/socket.io');
-  const data = /^\/(config|leaderboard|qr|p)\b/.test(url.pathname);
+  const data = /^\/(config|healthz|leaderboard|qr|p)\b/.test(url.pathname);
   if (live) return;
   // the page itself: any link (/?t=CODE too) opens the saved page; the app reads the link itself
   const key = req.mode === 'navigate' ? '/' : req;
