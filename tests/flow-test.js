@@ -383,6 +383,10 @@ async function main() {
     const page = await getText('/');
     check('pages are not sniffed or framed by other sites', page.headers['x-content-type-options'] === 'nosniff' && page.headers['x-frame-options'] === 'SAMEORIGIN', JSON.stringify(page.headers['x-frame-options']));
     check('the server does not say it runs Express', !page.headers['x-powered-by']);
+    await wait(600);
+    let onDisk = null;
+    try { onDisk = JSON.parse(fs.readFileSync(DATA, 'utf8')); } catch { /* checked below */ }
+    check('profiles are saved as a whole file (no half-written data.json, no temp file left)', onDisk?.people?.some(p => p.name === 'Asha') && !fs.existsSync(DATA + '.tmp'));
     const health = await getText('/healthz');
     check('health check answers ok and is never cached', health.status === 200 && JSON.parse(health.body).ok === true && health.headers['cache-control'] === 'no-store', health.body);
     check('camera and microphone only for Mehfil itself', /camera=\(self\)/.test(page.headers['permissions-policy'] || ''));

@@ -90,10 +90,25 @@ function loadData() {
     (d.people || []).forEach(p => people.set(p.token, p));
   } catch { /* first run */ }
 }
+// Saving: write a temporary file, then rename it over data.json, so a crash mid-write never leaves half a file
+// (a half file would lose every profile on the next start).
 let saveTimer = null;
+function saveNow() {
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  const tmp = `${DATA_FILE}.tmp`;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify({ people: [...people.values()] }));
+    fs.renameSync(tmp, DATA_FILE);
+  } catch (err) { console.error('Could not save data:', err.message); }
+}
 function save() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => fs.writeFile(DATA_FILE, JSON.stringify({ people: [...people.values()] }), () => {}), 400);
+  saveTimer = setTimeout(saveNow, 400);
+}
+// When the host stops the server (a deploy or restart sends SIGTERM), save what is waiting first.
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, () => { if (saveTimer) saveNow(); process.exit(0); });
 }
 loadData();
 
