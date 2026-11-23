@@ -2,6 +2,17 @@
 
 Newest first. Every change is also in the [commit history](https://github.com/Vineetsing9019/mehfil-antakshari/commits/main).
 
+## 23 November 2026
+
+- **Safer server.** Safety headers on every page (no MIME sniffing, no framing by other sites, camera and microphone only for Mehfil), and the server no longer says it runs Express.
+- **Spam guard.** At most 5 chat messages in 5 seconds (with one gentle "slow down" note) and 12 reactions in 3 seconds per person.
+- **Profiles can't be lost on a crash.** data.json is written to a temporary file and then renamed, and anything waiting is saved when the host stops the server (deploys and restarts).
+- **Health check** at /healthz for Render, instead of pinging /config.
+- **Faster repeat visits.** Icons and pictures are kept by the browser for a week; the page and script still update at once.
+- The installed app's splash and status bar use the light theme colours (they were still the old dark purple).
+- package.json now has a real description, repository, homepage and Node version.
+- 87 server checks and 6 design checks, all passing.
+
 ## 17 November 2026
 
 - **Mehfil is 16+.** Every time the app is opened it asks "Are you 16 or older?". Yes opens the app; No shows a kind message and nothing else works. The app does not even connect to the server until someone says yes, so an invite link cannot seat anyone who has not answered.
