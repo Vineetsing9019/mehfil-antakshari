@@ -35,4 +35,10 @@ check('the page has a theme colour matching the accent', () => {
   assert.match(html, /name="theme-color" content="#3c4fd6"/);
 });
 
+check('the installed app (manifest) uses the light page colour and the accent, not the old dark purple', () => {
+  const m = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'public', 'manifest.json'), 'utf8'));
+  assert.strictEqual(m.background_color, '#f5f6fa');
+  assert.strictEqual(m.theme_color, '#3c4fd6');
+});
+
 console.log(`${passed} design checks passed`);
