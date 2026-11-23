@@ -379,6 +379,13 @@ async function main() {
     await wait(400);
     check('a friend at a link-only table: the code is not shared', seen() && seen().tableCode === null, String(seen()?.tableCode));
 
+    console.log('\n13b. Spam guard: chat and reactions');
+    const chatsBefore = Pa.chat.length;
+    for (let i = 0; i < 8; i++) Pa.s.emit('chat', { text: `hello ${i}` });
+    await wait(400);
+    check('at most 5 chat messages in 5 seconds', Pa.chat.length - chatsBefore === 5, String(Pa.chat.length - chatsBefore));
+    check('the sender is told once to slow down', Pa.toasts.filter(t => t.includes('Slow down')).length === 1);
+
     console.log('\n14. Safety headers');
     const page = await getText('/');
     check('pages are not sniffed or framed by other sites', page.headers['x-content-type-options'] === 'nosniff' && page.headers['x-frame-options'] === 'SAMEORIGIN', JSON.stringify(page.headers['x-frame-options']));

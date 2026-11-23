@@ -694,8 +694,24 @@ io.on('connection', socket => {
   let token = null;
   const toast = msg => socket.emit('toast', msg);
   const myTable = () => tables.get(personTable.get(token));
+  // Spam guard: at most `max` chat messages (or reactions) in `ms`; extra ones are dropped, with one gentle note.
+  const flood = (max, ms, note) => {
+    let times = [], warned = 0;
+    return () => {
+      const now = Date.now();
+      times = times.filter(x => now - x < ms);
+      if (times.length >= max) {
+        if (note && now - warned > ms) { warned = now; toast(note); }
+        return true;
+      }
+      times.push(now);
+      return false;
+    };
+  };
+  const chatFlood = flood(5, 5000, 'Slow down a little: wait a few seconds before the next message');
+  const reactFlood = flood(12, 3000);
 
-  socket.on('hello', (p = {}) => {
+  socket.on('hello',(p = {}) => {
     const wanted = typeof p.token === 'string' && TOKEN_RE.test(p.token) ? p.token : null;
     token = wanted || Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
     socket.data.token = token;
@@ -883,12 +899,12 @@ io.on('connection', socket => {
   socket.on('chat', (p = {}) => {
     const t = myTable();
     const text = clean(p.text, 200);
-    if (t && text && memberOf(t, token)) addChat(t, token, text);
+    if (t && text && memberOf(t, token) && !chatFlood()) addChat(t, token, text);
   });
 
   socket.on('react', (p = {}) => {
     const t = myTable();
-    if (!t || !REACTIONS.includes(p.emoji) || !memberOf(t, token)) return;
+    if (!t || !REACTIONS.includes(p.emoji) || !memberOf(t, token) || reactFlood()) return;
     if (t.state === 'playing' && currentToken(t) !== token && !t.verifying) {
       t.claps++;
       if (currentToken(t)) t.clapTotals.set(currentToken(t), (t.clapTotals.get(currentToken(t)) || 0) + 1);
