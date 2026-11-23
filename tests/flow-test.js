@@ -397,6 +397,9 @@ async function main() {
     const health = await getText('/healthz');
     check('health check answers ok and is never cached', health.status === 200 && JSON.parse(health.body).ok === true && health.headers['cache-control'] === 'no-store', health.body);
     check('camera and microphone only for Mehfil itself', /camera=\(self\)/.test(page.headers['permissions-policy'] || ''));
+    const icon = await getText('/icon-192.png');
+    const script = await getText('/app.js');
+    check('icons are kept by the browser for a week; the app script is not', /max-age=604800/.test(icon.headers['cache-control'] || '') && !/max-age=604800/.test(script.headers['cache-control'] || '') && !!script.headers.etag, `${icon.headers['cache-control']} | ${script.headers['cache-control']}`);
 
     for (const p of [A, B, C, D3, E, jamHost, extra, ...more, F, G, Q, R, Lk, Ob, Bw, jamH, Dy, Fr, Hs, Gs, V1, ...vs, Pa, Pb]) p.s.close();
   } catch (err) {

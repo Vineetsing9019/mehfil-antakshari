@@ -55,7 +55,13 @@ app.use((req, res, next) => {
   });
   next();
 });
-app.use(express.static(path.join(__dirname, 'public')));
+// Pictures (icons, logo, link preview) are kept by the browser for a week, so repeat visits skip them;
+// the page, script and styles stay revalidated (ETag) so a new version shows at once.
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders(res, file) {
+    if (file.endsWith('.png')) res.set('Cache-Control', 'public, max-age=604800');
+  },
+}));
 
 // Voice relay for phones on mobile data: set ICE_SERVERS on the host as a JSON list of TURN servers.
 // Without your own TURN servers, a free public relay is used so voices also work on mobile data.
