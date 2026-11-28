@@ -186,7 +186,7 @@ function newPerson(token) {
 }
 
 // The public view of a person, as seen by `viewer`.
-function publicPerson(token) {
+function publicPerson(token, counts) {
   const p = personOf(token);
   if (!p) return null;
   const t = tables.get(personTable.get(token));
@@ -199,7 +199,7 @@ function publicPerson(token) {
     verified: !bot && !!p.verified, defaultSeed: p.defaultSeed,
     photo: bot ? p.photo : p.photo ? `/p/${token}/photo?v=${p.ver}` : null,
     posts: bot ? [] : (p.posts || []).map((_, i) => `/p/${token}/post/${i}?v=${p.ver}`),
-    sung: p.sung || 0, wins: p.wins || 0, followers: bot ? 0 : followersOf(token), badges, status,
+    sung: p.sung || 0, wins: p.wins || 0, followers: bot ? 0 : counts ? counts.get(token) || 0 : followersOf(token), badges, status,
     streak: bot ? 0 : streakOf(p.days),
     daily: bot ? null : { letter: dailyLetter(), done: p.dailyDone === today() },
     // A table's code is shared only if the table is open; link-only tables stay private.
@@ -257,28 +257,74 @@ app.get('/leaderboard', (req, res) => {
 });
 
 /* ---------- lobby broadcasts (filtered per viewer) ---------- */
-function peopleFor(viewer) {
-  const me = people.get(viewer);
-  const list = [...bots.keys()].concat([...live.keys()].filter(t => people.get(t)?.name))
-    .filter(t => t !== viewer && !blockedEither(viewer, t))
-    .map(publicPerson).filter(Boolean);
-  const follows = me?.follows || [];
-  list.forEach(x => { x.followed = follows.includes(x.token); });
-  return list.sort((a, b) => (follows.includes(b.token) ? 1 : 0) - (follows.includes(a.token) ? 1 : 0) ||
-    (a.status === 'free' ? 0 : 1) - (b.status === 'free' ? 0 : 1));
+// Load test (28 Nov 2026): with 200 singers online, every join or leave rebuilt the full list of everyone for
+// everyone and recounted followers for each name, so sign-up took up to 32 s and tables never seated.
+// Now one update is built per burst of changes, followers are counted once, and each person gets a short list:
+// people they follow, the AI singers and up to LOBBY_PEOPLE other singers (free ones first), plus the totals.
+// "Find a friend" searches everyone on the server ('find').
+const LOBBY_PEOPLE = 30, LOBBY_TABLES = 20;
+function followerCounts() {
+  const n = new Map();
+  for (const p of people.values()) for (const f of p.follows || []) n.set(f, (n.get(f) || 0) + 1);
+  return n;
 }
-function tablesFor(viewer) {
-  return [...tables.values()]
-    .filter(t => t.state !== 'hidden' && !t.settings.private && [...t.members.keys()].some(isHuman) && t.members.size < capacity(t))
-    .filter(t => ![...t.members.keys()].some(m => blockedEither(viewer, m)))
-    .map(t => ({ code: t.code, type: t.type, host: personOf(t.hostToken)?.name || 'Host',
-      count: t.members.size, max: capacity(t), state: t.state, theme: THEMES[t.settings.theme]?.label || '',
-      lang: t.type === 'game' ? ({ en: 'English', hi: 'हिन्दी', mr: 'मराठी' })[t.settings.lang] : '' }));
+// Everyone who can show up in a lobby, built once per update.
+function lobbyCrowd() {
+  const counts = followerCounts();
+  const view = token => {
+    const x = publicPerson(token, counts);
+    return x;
+  };
+  const humans = [...live.keys()].filter(t => people.get(t)?.name).map(view).filter(Boolean)
+    .sort((a, b) => (a.status === 'free' ? 0 : 1) - (b.status === 'free' ? 0 : 1));
+  const ais = [...bots.keys()].filter(b => !bots.get(b).copy).map(view).filter(Boolean);
+  const open = [...tables.values()]
+    .filter(t => t.state !== 'hidden' && !t.settings.private && [...t.members.keys()].some(isHuman) && t.members.size < capacity(t));
+  return { humans, ais, open };
 }
-function pushLobby() {
-  for (const [token, sid] of live) {
-    io.to(sid).emit('lobby', { people: peopleFor(token), tables: tablesFor(token) });
+function peopleFor(viewer, crowd = lobbyCrowd()) {
+  const follows = new Set(people.get(viewer)?.follows || []);
+  const ok = x => x.token !== viewer && !blockedEither(viewer, x.token);
+  const friends = [], others = [];
+  for (const x of crowd.humans) {
+    if (!ok(x)) continue;
+    if (follows.has(x.token)) friends.push({ ...x, followed: true });
+    else if (others.length < LOBBY_PEOPLE) others.push({ ...x, followed: false });
   }
+  const ais = crowd.ais.filter(ok).map(x => ({ ...x, followed: follows.has(x.token) }));
+  return [...friends, ...others, ...ais.filter(x => x.followed), ...ais.filter(x => !x.followed)];
+}
+const tableCard = t => ({ code: t.code, type: t.type, host: personOf(t.hostToken)?.name || 'Host',
+  count: t.members.size, max: capacity(t), state: t.state, theme: THEMES[t.settings.theme]?.label || '',
+  lang: t.type === 'game' ? ({ en: 'English', hi: 'हिन्दी', mr: 'मराठी' })[t.settings.lang] : '' });
+function tablesFor(viewer, crowd = lobbyCrowd()) {
+  return crowd.open.filter(t => ![...t.members.keys()].some(m => blockedEither(viewer, m)));
+}
+function lobbyFor(token, crowd = lobbyCrowd()) {
+  const open = tablesFor(token, crowd);
+  return { people: peopleFor(token, crowd), tables: open.slice(0, LOBBY_TABLES).map(tableCard),
+    online: crowd.humans.filter(x => x.token !== token).length, tablesTotal: open.length };
+}
+// Many changes close together (a burst of joins) become one update: within 100 ms, or 1 s when it is busy.
+let lobbyTimer = null;
+function pushLobby() {
+  if (lobbyTimer) return;
+  lobbyTimer = setTimeout(() => {
+    lobbyTimer = null;
+    const crowd = lobbyCrowd();
+    for (const [token, sid] of live) io.to(sid).emit('lobby', lobbyFor(token, crowd));
+  }, live.size > 200 ? 1000 : 100);
+}
+// Find a friend: everyone online whose name or @username matches (up to 8, real people first).
+function findPeople(viewer, q) {
+  const s = clean(q, 30).toLowerCase().replace(/^@/, '');
+  if (!s) return [];
+  const counts = followerCounts();
+  const follows = new Set(people.get(viewer)?.follows || []);
+  return [...live.keys(), ...[...bots.keys()].filter(b => !bots.get(b).copy)]
+    .filter(t => t !== viewer && !blockedEither(viewer, t))
+    .map(t => personOf(t)).filter(p => p?.name && (`${p.name} ${p.handle}`).toLowerCase().includes(s))
+    .slice(0, 8).map(p => ({ ...publicPerson(p.token, counts), followed: follows.has(p.token) }));
 }
 function capacity(t) { return t.type === 'jam' ? JAM_MAX : GAME_MAX + LISTENER_MAX; }
 
@@ -356,8 +402,9 @@ function leaveTable(token, why = 'left') {
   if (t.stage === token) t.stage = null;
   if (t.verifying?.token === token) { t.verifying = null; clearTimeout(t.verifyTimer); }
   const name = personOf(token)?.name || 'Someone';
+  dropCopy(token);
   if (!t.members.size || ![...t.members.keys()].some(isHuman)) {
-    [...t.members.keys()].forEach(x => personTable.delete(x));
+    [...t.members.keys()].forEach(x => { personTable.delete(x); dropCopy(x); });
     clearTimeout(t.timer); clearTimeout(t.botTimer); clearTimeout(t.verifyTimer);
     tables.delete(t.code);
     pushLobby();
@@ -420,10 +467,17 @@ function viewFor(t, token) {
       ? [...librarySongsFor(t.letter, []).map(x => x.title), ...(SONGS[t.letter] || [])] : [],
   };
 }
+// Table updates close together (a burst of claps and chat) go out as one, 30 ms later, built from the table as it
+// is then. Load test, 28 Nov 2026: every clap sent the whole table (with its chat) to everyone at it.
 function pushTable(t) {
-  for (const m of t.members.keys()) {
-    if (isHuman(m) && live.has(m)) io.to(live.get(m)).emit('table', viewFor(t, m));
-  }
+  if (t.pushTimer) return;
+  t.pushTimer = setTimeout(() => {
+    t.pushTimer = null;
+    if (tables.get(t.code) !== t) return;
+    for (const m of t.members.keys()) {
+      if (isHuman(m) && live.has(m)) io.to(live.get(m)).emit('table', viewFor(t, m));
+    }
+  }, 30);
 }
 function broadcast(t, ev, data) {
   for (const m of t.members.keys()) if (isHuman(m) && live.has(m)) io.to(live.get(m)).emit(ev, data);
@@ -687,8 +741,27 @@ function respondInvite(fromToken, toToken, accept) {
 
 // AI singers not sitting at any table, in random order.
 function freeBots() {
-  return [...bots.keys()].filter(b => !personTable.has(b)).sort(() => Math.random() - 0.5);
+  return [...bots.keys()].filter(b => !bots.get(b).copy && !personTable.has(b)).sort(() => Math.random() - 0.5);
 }
+// AI singers for a table: free ones first; when all 20 are busy, stand-ins (a copy of one: same name, voice and
+// picture) that exist only for that table. Before 28 Nov 2026 only 10 people could play with AI at once
+// (2 singers each) and everyone else got "All AI singers are busy" (load test, 200 singers).
+let copyNo = 0;
+function aiSingers(n, avoid = []) {
+  const picks = freeBots().filter(b => !avoid.includes(b)).slice(0, n);
+  const used = new Set([...avoid, ...picks].map(b => bots.get(b)?.base || b));
+  const originals = [...bots.keys()].filter(b => !bots.get(b).copy).sort(() => Math.random() - 0.5);
+  for (const base of originals) {
+    if (picks.length >= n) break;
+    if (used.has(base)) continue;
+    const id = `${base}~${++copyNo}`;
+    bots.set(id, { ...bots.get(base), id, token: id, base, copy: true });
+    picks.push(id); used.add(base);
+  }
+  return picks;
+}
+// A stand-in is removed once it leaves its table.
+function dropCopy(token) { if (bots.get(token)?.copy) bots.delete(token); }
 
 function emitTo(token, ev, data) {
   const sid = live.get(token);
@@ -762,8 +835,7 @@ io.on('connection', socket => {
   // Play now: a game with two AI singers that starts at once.
   socket.on('table:quick', (p = {}) => {
     if (!token || !people.get(token)?.name) return toast('Create your profile first');
-    const picks = freeBots().slice(0, 2);
-    if (!picks.length) return toast('All AI singers are busy. Try again in a minute.');
+    const picks = aiSingers(2);
     leaveTable(token);
     const t = createTable('game', token, { private: true, botLevel: p.level });
     if (p.daily) t.forceLetter = dailyLetter();
@@ -778,8 +850,7 @@ io.on('connection', socket => {
     const t = myTable();
     if (!t || t.hostToken !== token || t.type !== 'game' || t.state === 'playing') return;
     if (singersIn(t).length >= GAME_MAX) return toast(`This table is full (${GAME_MAX} singers)`);
-    const b = freeBots()[0];
-    if (!b) return toast('All AI singers are busy right now');
+    const [b] = aiSingers(1, [...t.members.keys()].filter(m => bots.has(m)));
     joinTable(t, b, { silent: true });
     addChat(t, null, `${personOf(b).name} (AI singer) joined the table`);
     pushTable(t);
@@ -952,6 +1023,10 @@ io.on('connection', socket => {
     const err = sendInvite(token, p.token);
     if (err) toast(err);
   });
+  socket.on('find', (p = {}, ack) => {
+    if (token && typeof ack === 'function') ack(findPeople(token, p.q));
+  });
+
   socket.on('invite:respond', (p = {}) => respondInvite(p.fromToken, token, !!p.accept));
 
   socket.on('profile:delete', () => {
@@ -1020,7 +1095,7 @@ const lanIps = Object.values(os.networkInterfaces()).flat()
   .filter(i => i && i.family === 'IPv4' && !i.internal).map(i => i.address);
 
 // On a hosting service the host gives the port and https, so only the plain server runs there.
-module.exports = { app, io, tables, people, bots, live, sendInvite, respondInvite, createTable, joinTable, leaveTable, startGame, submitAttempt, castVote, loseLife, pushLobby, publicPerson, viewFor, DEVA, nextLetter, emitTo };
+module.exports = { findPeople, lobbyFor, app, io, tables, people, bots, live, sendInvite, respondInvite, createTable, joinTable, leaveTable, startGame, submitAttempt, castVote, loseLife, pushLobby, publicPerson, viewFor, DEVA, nextLetter, emitTo };
 
 if (require.main === module) {
   if (process.env.PORT) {

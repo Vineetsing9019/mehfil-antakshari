@@ -313,7 +313,15 @@ socket.on('profile:deleted', () => {
   toast('Your profile was deleted');
   showJoin();
 });
-socket.on('lobby', d => { S.lobby = d; remember(); if (!S.table) renderLobby(); else if (S.sheet === 'singers') renderInviteList(); });
+socket.on('lobby', d => {
+  S.lobby = d; remember();
+  // A search on screen is asked again, so who is free / at a table stays current.
+  const q = S.found?.q, box = !S.table ? $('#find-q') : $('#inv-q');
+  if (q && box && box.value.trim().toLowerCase().replace(/^@/, '') === q) {
+    askServer(q, list => { if (S.found?.q === q) { S.found = { q, list }; S.table ? renderInviteList() : renderFindList(); } });
+  }
+  if (!S.table) renderLobby(); else if (S.sheet === 'singers') renderInviteList();
+});
 socket.on('table', v => {
   if (!v) { leaveLocal(); return; }
   S.table = v;
@@ -443,24 +451,27 @@ function renderLobby() {
   // Open tables: only shown when there are some.
   $('#tables-card').hidden = !S.lobby.tables.length;
   $('#lobby-tables').innerHTML = S.lobby.tables.slice(0, 1).map(tableCard).join('')
-    + (S.lobby.tables.length > 1 ? `<button class="btn btn-text btn-sm" data-act="all-tables">See all ${S.lobby.tables.length} tables</button>` : '');
+    + (S.lobby.tables.length > 1 ? `<button class="btn btn-text btn-sm" data-act="all-tables">See all ${S.lobby.tablesTotal || S.lobby.tables.length} tables</button>` : '');
   // Real people and AI singers are always in separate rows.
   const humans = S.lobby.people.filter(p => !p.bot), ais = S.lobby.people.filter(p => p.bot);
   // One row: friends who are online first (green ring), then the AI singers.
   $('#friends-card').hidden = true;
-  $('#singers-title').innerHTML = humans.length ? `<span class="dot"></span>Singers online <span class="muted">· ${humans.length + ais.length}</span>` : 'Singers';
-  $('#online-count').textContent = humans.length ? `· ${humans.length}` : '';
+  // The server sends a short list (friends, AI singers, up to 30 others) and the real total online.
+  const online = Math.max(S.lobby.online || 0, humans.length);
+  $('#singers-title').innerHTML = online ? `<span class="dot"></span>Singers online <span class="muted">· ${online.toLocaleString('en-IN')}</span>` : 'Singers';
+  $('#online-count').textContent = online ? `· ${online.toLocaleString('en-IN')}` : '';
   $('#stories').innerHTML = humans.length
     ? humans.slice(0, 30).map(storyHtml).join('')
     : '<p class="muted">No friends online right now. Use "Play with friends" to invite one.</p>';
-  $('#ai-people').innerHTML = [...humans, ...ais].map(storyHtml).join('');
+  $('#ai-people').innerHTML = [...humans.slice(0, 30), ...ais].map(storyHtml).join('');
   renderFindList();
 }
 // Find a friend on home: people online whose name or @username matches. Free: Invite. At an open table: Join.
 function renderFindList() {
   const box = $('#find-list'); if (!box || $('#find').hidden) return;
   const q = ($('#find-q')?.value || '').trim().toLowerCase().replace(/^@/, '');
-  const list = S.lobby.people
+  // With a name typed, the server searches everyone online (the home list is only a short one).
+  const list = q && S.found?.q === q ? S.found.list : S.lobby.people
     .filter(p => !q || (p.name + ' ' + p.handle).toLowerCase().includes(q))
     .sort((a, b) => (a.bot ? 1 : 0) - (b.bot ? 1 : 0))
     .slice(0, q ? 8 : 5);
@@ -473,7 +484,15 @@ function renderFindList() {
     return `<div class="mrow">${av(p)}<div class="who"><div class="nm">${esc(p.name)}${p.bot ? '<span class="aib">AI</span>' : ''}</div><div class="role">${p.bot ? 'AI singer' : '@' + esc(p.handle) + ' · ' + where}</div></div>${act}</div>`;
   }).join('') : `<div class="muted inv-empty">${q ? 'No one online with that name. Share your table link so they can join.' : 'No one online yet.'}</div>`;
 }
-document.addEventListener('input', e => { if (e.target.id === 'find-q') renderFindList(); });
+let findTimer = null;
+function askServer(q, then) { socket.emit('find', { q }, list => then(Array.isArray(list) ? list : [])); }
+document.addEventListener('input', e => {
+  if (e.target.id !== 'find-q') return;
+  renderFindList();
+  clearTimeout(findTimer);
+  const q = e.target.value.trim().toLowerCase().replace(/^@/, '');
+  if (q) findTimer = setTimeout(() => askServer(q, list => { S.found = { q, list }; renderFindList(); }), 250);
+});
 
 function boardHtml() {
   return S.board.length
@@ -594,8 +613,14 @@ function renderInvite() {
 /* ---------- profile sheet ---------- */
 function openProfileByHandle(h) {
   const p = S.lobby.people.find(x => x.handle === h);
-  if (p) openProfile(p.token);
-  else toast(`@${h} is not online right now`);
+  if (p) return openProfile(p.token);
+  // Not in the short home list: ask the server about everyone online.
+  askServer(h, list => {
+    const q = list.find(x => x.handle === h);
+    if (!q) return toast(`@${h} is not online right now`);
+    S.lobby.people.push(q);
+    openProfile(q.token);
+  });
 }
 function openProfile(token) {
   const isMe = token === S.token;
@@ -1008,7 +1033,8 @@ function renderInviteList() {
   const box = $('#inv-list'); if (!box) return;
   const q = ($('#inv-q')?.value || '').trim().toLowerCase();
   const here = new Set((S.table?.members || []).map(m => m.token));
-  const list = S.lobby.people
+  const pool = q && S.found?.q === q ? S.found.list : S.lobby.people;
+  const list = pool
     .filter(p => p.status === 'free' && !here.has(p.token) && (!q || (p.name + ' ' + p.handle).toLowerCase().includes(q)))
     .sort((a, b) => (a.bot ? 1 : 0) - (b.bot ? 1 : 0))
     .slice(0, q ? 8 : 4);
@@ -1016,7 +1042,13 @@ function renderInviteList() {
       ${S.sent.has(p.token) ? '<span class="pstate">Invited</span>' : `<button class="btn btn-line btn-sm" data-act="req" data-arg="${esc(p.token)}">Invite</button>`}</div>`).join('')
     : `<div class="muted inv-empty">${q ? 'No free singer with that name' : 'No one free right now'}</div>`;
 }
-document.addEventListener('input', e => { if (e.target.id === 'inv-q') renderInviteList(); });
+document.addEventListener('input', e => {
+  if (e.target.id !== 'inv-q') return;
+  renderInviteList();
+  clearTimeout(findTimer);
+  const q = e.target.value.trim().toLowerCase();
+  if (q) findTimer = setTimeout(() => askServer(q, list => { S.found = { q, list }; renderInviteList(); }), 250);
+});
 
 function renderChatLog() {
   const v = S.table, box = $('#t-chatlog');

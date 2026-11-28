@@ -212,7 +212,8 @@ const check = (name, ok, detail = '') => console.log(`${ok ? 'PASS' : 'FAIL'}  $
     check('the host is told about the rematch', hostToast.includes('wants a rematch'), hostToast.split('\n').pop());
   }
   await H.$eval('#modal-root [data-act=share-result]', e => e.click()).catch(() => {});
-  await wait(300);
+  // The result picture is drawn first, so the share sheet can take a moment.
+  await H.waitForFunction(() => window.__shared.length > 0, { timeout: 5000 }).catch(() => {});
   const shared = await H.evaluate(() => window.__shared[0]);
   check('Share uses the phone\'s share sheet (picture or link)', !!shared && (String(shared.url || '') + ' ' + shared.text).includes(`/?t=${code}`), shared ? shared.text.slice(0, 40) : '');
 

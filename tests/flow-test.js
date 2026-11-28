@@ -65,6 +65,7 @@ async function main() {
     console.log('\n1. Profiles, table codes and joining by code');
     const A = await person('Asha', { handle: 'asha' });
     const B = await person('Bobby', { handle: 'bobby' });
+    await wait(250); // lobby updates are grouped (within 100 ms)
     check('profile saved and shown in the lobby', B.lobby.people.some(p => p.name === 'Asha'), JSON.stringify(B.lobby.people.map(p => p.name)));
     A.s.emit('table:create', { type: 'game' });
     await wait(300);
@@ -373,11 +374,17 @@ async function main() {
     const Pb = await person('Prakash', { handle: 'prakash' });
     Pa.s.emit('table:create', { type: 'game' });
     await wait(400);
-    const seen = () => Pb.lobby.people.find(p => p.token === Pa.token);
-    check('a friend at an open table shows its code (so you can join)', seen()?.tableCode === Pa.view.code, String(seen()?.tableCode));
+    // Find a friend asks the server, so it finds anyone online, not only the short home list.
+    const find = q => new Promise(res => Pb.s.emit('find', { q }, res));
+    let seen = (await find('pallavi')).find(p => p.token === Pa.token);
+    check('a friend at an open table shows its code (so you can join)', seen?.tableCode === Pa.view.code, String(seen?.tableCode));
     Pa.s.emit('table:settings', { settings: { private: true } });
     await wait(400);
-    check('a friend at a link-only table: the code is not shared', seen() && seen().tableCode === null, String(seen()?.tableCode));
+    seen = (await find('@Pallavi')).find(p => p.token === Pa.token);
+    check('a friend at a link-only table: the code is not shared', seen && seen.tableCode === null, String(seen?.tableCode));
+    check('find needs a name, and never lists yourself', (await find('')).length === 0 && !(await find('prakash')).some(p => p.token === Pb.token));
+    await wait(300);
+    check('home lobby: a short list of singers with the total online and the AI singers', Pb.lobby.people.filter(p => !p.bot).length <= 30 && Pb.lobby.people.some(p => p.bot) && Pb.lobby.online >= 2, `${Pb.lobby.people.length} people, online ${Pb.lobby.online}`);
 
     console.log('\n13b. Spam guard: chat and reactions');
     const chatsBefore = Pa.chat.length;
@@ -385,6 +392,23 @@ async function main() {
     await wait(400);
     check('at most 5 chat messages in 5 seconds', Pa.chat.length - chatsBefore === 5, String(Pa.chat.length - chatsBefore));
     check('the sender is told once to slow down', Pa.toasts.filter(t => t.includes('Slow down')).length === 1);
+
+    console.log('\n13c. Play now never runs out of AI singers');
+    const solo = [];
+    for (let i = 0; i < 12; i++) solo.push(await person(`Solo ${i}`, { handle: `solo${i}` }));
+    solo.forEach(p => p.s.emit('table:quick', {}));
+    await wait(800);
+    const aiAt = p => (p.view?.members || []).filter(m => m.bot);
+    check('12 people press Play now at once (24 AI seats, 20 AI singers): everyone gets a game with 2 AI singers', solo.every(p => p.view?.state === 'playing' && aiAt(p).length === 2), solo.map(p => aiAt(p).length).join(','));
+    check('no table has the same AI singer twice', solo.every(p => new Set(aiAt(p).map(m => m.name)).size === 2));
+    check('stand-in copies never show in the singer lists (still 20 AI singers)', solo[0].lobby.people.filter(p => p.bot).length === 20, String(solo[0].lobby.people.filter(p => p.bot).length));
+    check('nobody was told the AI singers are busy', solo.every(p => !p.toasts.some(t => /busy/i.test(t))));
+    solo.forEach(p => p.s.emit('table:leave'));
+    await wait(400);
+    solo.forEach(p => p.s.emit('table:quick', {}));
+    await wait(800);
+    check('after leaving, AI singers are free again for the next game', solo.every(p => aiAt(p).length === 2));
+    solo.forEach(p => p.s.close());
 
     console.log('\n14. Safety headers');
     const page = await getText('/');
