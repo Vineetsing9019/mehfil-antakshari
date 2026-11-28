@@ -154,3 +154,41 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent) !importa
 /* 16+ check screen: a calm backdrop, not the dark gradient. */
 .agegate { background: rgba(17, 20, 30, 0.5) !important; }
 .agelogo { box-shadow: none !important; }
+
+/* ===== Light theme clean-up (28 Nov 2026): the old dark theme's see-through black fills showed as muddy grey
+   on the light page (home choices, open tables, chips, game-over rows), and its white outlines were invisible. ===== */
+.mode, .tcard, .icard, .chip, .defaults button, .tile, .board-list li, .reactbar button, .hints span, .mrow,
+.quick button, .trail .t, .queue .q, .board > div, .recap li, .lyric {
+  background: var(--panel) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--text);
+}
+.mode:hover, .tcard:hover, .icard:hover, .chip:hover, .defaults button:hover { border-color: var(--accent) !important; }
+.recap li, .trail .t, .queue .q, .hints span { background: var(--bg) !important; }
+.field input, .field textarea, input.search, .code-row input, .chat-row input, .invite-name input, .find input {
+  background: var(--panel) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--text) !important;
+}
+.tile.add { border: 1px dashed var(--line) !important; }
+/* Outlined buttons: a real outline on the light page. */
+.btn-line {
+  background: var(--panel) !important;
+  border: 1px solid #c9cedb !important;
+  color: var(--text) !important;
+}
+.btn-line:hover { border-color: var(--accent) !important; background: var(--accent-soft) !important; }
+/* Selected chip (AI level, theme, turn time): soft accent, never grey. */
+.chip.on, .chip[aria-pressed="true"] { background: var(--accent-soft) !important; border-color: var(--accent) !important; color: var(--accent) !important; }
+/* Pop-ups and sheets: white, hairline, calm shadow. */
+.scrim { background: rgba(23, 26, 35, 0.45) !important; backdrop-filter: none !important; }
+.sheet { background: var(--panel) !important; border: 1px solid var(--line) !important; box-shadow: 0 12px 40px rgba(16, 24, 40, 0.18) !important; }
+/* Buttons in a pop-up row keep their whole label (the rematch button was cut off on phones). */
+.sheet .row .btn { flex: 1 1 auto; min-width: 0; }
+/* Game over: small avatars in the score rows (they used the 84 px profile size). */
+.board > div { gap: 10px; }
+.board .av, .sheet .mrow .av, .sheet .recap .av { width: 36px !important; height: 36px !important; font-size: 16px; margin: 0 !important; }
+.board > div.win { background: var(--accent-soft) !important; border-color: var(--accent) !important; }
+/* Bottom dock: white bar with a hairline (it was a dark purple glass panel). */
+.dock { background: rgba(255, 255, 255, 0.96) !important; border: 1px solid var(--line) !important; }
+.vtile span { background: rgba(23, 26, 35, 0.6) !important; color: #fff; }

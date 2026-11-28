@@ -41,4 +41,12 @@ check('the installed app (manifest) uses the light page colour and the accent, n
   assert.strictEqual(m.theme_color, '#3c4fd6');
 });
 
+check('no muddy grey fills from the old dark theme: cards, choices and score rows are white', () => {
+  for (const sel of ['.mode', '.tcard', '.chip', '.mrow', '.board > div', '.recap li']) assert.ok(pro.includes(sel), sel + ' is not restyled');
+  assert.match(pro, /\.btn-line \{[^}]*border: 1px solid #c9cedb/);
+});
+check('pop-up buttons keep their whole label (no min-width that cuts them off)', () => {
+  assert.match(pro, /\.sheet \.row \.btn \{ flex: 1 1 auto; min-width: 0; \}/);
+});
+
 console.log(`${passed} design checks passed`);
