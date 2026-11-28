@@ -2,6 +2,15 @@
 
 Newest first. Every change is also in the [commit history](https://github.com/Vineetsing9019/mehfil-antakshari/commits/main).
 
+## 28 November 2026
+
+- **Ready for 1,000 singers at once** (new load test, node tests/load-test.js 1000): all sign up in about 2 s and get a seat; before, 200 singers already took up to 32 s and most never got a table.
+- **Play now never says "AI singers are busy"**: stand-in AI singers when all 20 are at tables.
+- Find a friend searches everyone online on the server.
+- **Cleaner look**: white cards and choices (no grey), visible outlines, white pop-ups, small avatars on the result card, full rematch button.
+- New looks and styles reach phones on the next visit.
+- 94 server checks and 8 design checks, all passing.
+
 ## 23 November 2026
 
 - **Safer server.** Safety headers on every page (no MIME sniffing, no framing by other sites, camera and microphone only for Mehfil), and the server no longer says it runs Express.

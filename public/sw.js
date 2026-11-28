@@ -1,7 +1,7 @@
 // Service worker: Mehfil opens instantly on later visits and works without internet.
 // App files (page, script, styles, icons) come from the saved copy at once and are refreshed in the background,
 // so a new version shows on the next visit. Live play and data (Socket.IO, /config, /leaderboard, photos) always use the network.
-const CACHE = 'mehfil-v6';
+const CACHE = 'mehfil-v7';
 const SHELL = ['/', '/app.css', '/theme-pro.css', '/app.js', '/socket.io/socket.io.min.js', '/manifest.json', '/icon-192.png'];
 const APP_FILE = /\.(js|css|png|svg|json|ico|woff2?)$/;
 
@@ -30,8 +30,9 @@ self.addEventListener('fetch', e => {
   if (req.mode === 'navigate' || APP_FILE.test(url.pathname)) {
     e.respondWith(caches.match(key).then(hit => {
       if (hit) {
-        // Refresh the saved copy in the background; if the page or the app script changed, tell the open pages.
-        const key2 = url.pathname === '/' || req.mode === 'navigate' || url.pathname === '/app.js';
+        // Refresh the saved copy in the background; if the page, the app script or a stylesheet changed, tell the
+        // open pages (a style-only update used to stay on the old look until the next visit).
+        const key2 = url.pathname === '/' || req.mode === 'navigate' || url.pathname === '/app.js' || /^\/(app|theme-pro)\.css$/.test(url.pathname);
         e.waitUntil(fresh.then(res => {
           const was = hit.headers.get('etag'), now = res.headers.get('etag');
           if (key2 && res.ok && was && now && was !== now) {
